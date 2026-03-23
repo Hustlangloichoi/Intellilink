@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<doc>
+    <!-- Brackets for auto-highlighting -->
+    <brackets left="{" right="}" />
+    <brackets left="[" right="]" />
+
+    <!-- Style definitions -->
+    <style name="DefaultText" color="#D4D4D4" />
+    <style name="DateTime" color="#369432" />
+    <style name="LogLevelError" color="#FF8C00" />
+    <style name="LogLevelFatal" color="#FF0000" />
+    <style name="PropertyName" color="#6796E6" />
+    <style name="String" color="#CE9178" />
+    <style name="Number" color="#B5CEA8" />
+    <style name="Keyword" color="#569CD6" />
+    <style name="Brackets" color="Yellow" />
+    <style name="Pipe" color="DodgerBlue" />
+    <style name="SpecialChars" color="Yellow" />
+
+    <!-- Rules for highlighting -->
+    <!-- Note: Order is important. More specific rules should come first. -->
+    <!-- 날짜 시간 형식: 2025-08-28 11:04:55.8357 또는 2025-08-28 11:04:55 -->
+    <!-- 파이프 문자 (기존 색상 유지) -->
+    <rule style="Pipe">\|</rule>
+    <!-- 키보드 특수 문자들 (노란색) - '_'와 '|'는 제외 -->
+    <rule style="SpecialChars">[!@#$%\^&amp;*\(\)\+=\-\[\]{}\\;':",&lt;,.&gt;/\?`~]</rule>
+    <rule style="DateTime">\b\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}(?:\.\d+)?\b</rule>
+    <!-- 로그 레벨 - FATAL, ERROR (주황색) - 텍스트만 -->
+    <rule style="LogLevelError">(FATAL|ERROR)</rule>
+    <!-- 로그 레벨 - 나머지 (기본 텍스트 색상) -->
+    <rule style="DefaultText">(DEBUG|INFO|WARN)</rule>
+    <!-- SQL 키워드 (String 색상으로 표시) -->
+    <rule style="String">\b(?i)(SELECT|INSERT|UPDATE|DELETE|CREATE|DROP|ALTER|DECLARE|BEGIN|END|IF|ELSE|ELSIF|ELSEIF|THEN|WHEN|CASE|FOR|WHILE|LOOP|EXCEPTION|RAISE|COMMIT|ROLLBACK|SAVEPOINT|GRANT|REVOKE|FROM|WHERE|ORDER|GROUP|HAVING|BY|AS|ON|IN|EXISTS|BETWEEN|LIKE|NULL|NOT|AND|OR|UNION|INTERSECT|MINUS|JOIN|INNER|LEFT|RIGHT|FULL|OUTER|WITH|DISTINCT|ALL|ANY|SOME|TOP|LIMIT|OFFSET|INTO|VALUES|SET|PRIMARY|KEY|FOREIGN|REFERENCES|UNIQUE|INDEX|CONSTRAINT|CHECK|DEFAULT|AUTO_INCREMENT|IDENTITY|SEQUENCE|TRIGGER|FUNCTION|PROCEDURE|PACKAGE|VIEW|TABLE|DATABASE|SCHEMA|TABLESPACE|USER|ROLE|SYNONYM|TYPE|CURSOR|RECORD|ARRAY|VARRAY|NESTED|BULK|COLLECT|FORALL|EXECUTE|IMMEDIATE|USING|RETURNING|PRAGMA|CONSTANT|VARIABLE|EXCEPTION_INIT|OTHERS|SQLERRM|SQLCODE|ROWTYPE|ROWCOUNT|FOUND|NOTFOUND|ISOPEN|EXIT|CONTINUE|GOTO|LABEL|COMMENT|ANALYZE|EXPLAIN|PLAN|STATS|OPTIMIZE|VACUUM|REINDEX|CLUSTER|LOCK|UNLOCK|TRUNCATE|MERGE|UPSERT|REPLACE|DUPLICATE|IGNORE|CASCADE|RESTRICT|NO|ACTION|DEFERRABLE|INITIALLY|DEFERRED|IMMEDIATE|MATCH|PARTIAL|SIMPLE|FULL)\b</rule>
+    <!-- XML 엘리먼트 전체 (태그명과 속성 포함) -->
+    <rule style="PropertyName">&lt;[^&gt;]*&gt;</rule>
+    <!-- XML 엘리먼트 값 (태그 사이의 내용) - 더 정확한 매칭 -->
+    <rule style="String">&gt;([^&lt;&gt;]+)&lt;/</rule>
+    <rule style="PropertyName">"(\\.|[^"\\])*"\s*:</rule>
+    <rule style="String">"(\\.|[^"\\])*"</rule>
+    <!-- 순수한 숫자만 매칭 (독립적인 숫자만) -->
+    <!--<rule style="Number">\b-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?\b(?![:\-\.])</rule>-->
+    <rule style="Keyword">\b(true|false|null)\b</rule>
+    <rule style="Brackets">[\{\}\[\]]</rule>
+
+    <!-- Code folding -->
+    <folding start="{" finish="}" />
+    <folding start="\[" finish="\]" />
+    <folding start="&lt;[^/]" finish="&lt;/" />
+    <!-- Oracle PL/SQL 블록 폴딩 (대소문자 구별 없음) -->
+    <folding start="(?i)\bdeclare\b" finish="(?i)\bend\s*;" />
+</doc> 

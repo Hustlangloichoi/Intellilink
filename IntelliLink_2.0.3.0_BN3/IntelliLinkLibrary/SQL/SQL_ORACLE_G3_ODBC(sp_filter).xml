@@ -1,0 +1,2336 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+
+<!--
+==============================================================================================================================
+                                                        Manual
+
+  1. 'package id' and 'sql id' can be added, modified, deleted. And IntelliLInk restart is required to be applied.
+
+  2. Mapping name(case sensitive) is  'REPLACER + ColumnName'
+
+    - REPLACER(Binding)
+      $ : CLOB
+      ! : BLOB 
+        - DATA MUST BE ENCODED IN BASE64
+        - e.g.) A FUNCTION that encodes a BLOB column to Base64 and returns it as a CLOB
+
+                FUNCTION blob_to_base64
+                (
+	                p_blob BLOB
+                )
+                RETURN CLOB
+                IS  
+	                v_clob CLOB;
+	                v_step PLS_INTEGER := 12000; // make sure you set a multiple of 3 not higher than 24573
+                BEGIN
+	                FOR i IN 0 .. TRUNC((DBMS_LOB.GETLENGTH(p_blob) - 1 )/v_step) LOOP
+		                v_clob := v_clob || UTL_RAW.CAST_TO_VARCHAR2(UTL_ENCODE.BASE64_ENCODE(DBMS_LOB.substr(p_blob, v_step, i * v_step + 1)));
+	                END LOOP;
+	
+	                RETURN v_clob;
+                END;          
+      % : DATE
+      # : NUMBER
+      @ : VARCHAR2, LONG
+      ^ : XMLTYPE
+
+      =$ : return CLOB
+      =% : return DATE
+      =# : return NUMBER
+      =@ : return VARCHAR2, LONG
+      =^ : return XMLTYPE
+      (=! : 'return BLOB' IS NOT SUPPORT)
+
+    e.g. 1) In the following query statement, the mapping name is '@QUE_ID', '@B.C1' and '@B_C2'
+
+        SELECT
+              Q.key AS QUE_ID,
+              B.C1,
+							B.C2 AS B_C2,
+        FROM  QueTable Q, Test_B B
+        WHERE Q.key = B.key
+        AND   Q.flag = 'N'
+
+    e.g. 2) The above 'mapping name' can be used in other query statements as follows.
+
+        UPDATE QueTable Set flag = 'Y' WHERE key = @QUE_ID
+
+    e.g. 3) Call function with return (MULTIPLE VARIABLES CAN BE DEFINED. REMOVE '=' AND THEN USE IN OTHER SQL_ID)
+
+      <sql id="Sample1">
+        BEGIN
+          =@RETURN_VALUE_VARCHAR2 := function_with_return_varchar2(@MESSAGE);
+		      =$RETURN_VALUE_CLOB := function_with_return_clob(@MESSAGE);
+        END;
+      </sql>
+	  
+      <sql id="Sample2">
+        BEGIN
+          ProcedureOrFunction(@RETURN_VALUE_VARCHAR2);
+		      ProcedureOrFunction($RETURN_VALUE_CLOB);
+        END;
+      </sql>
+	  
+
+  3. All replacer will be binding
+
+  4. Start with SELECT, UPDATE, INSERT, DELETE statement can be called without ';' at the end of the sentence
+
+  5. Call Procedure
+    A. CALL test.Procdure1(@A) // Do not add ';' at the end of the sentence
+    B. DECLARE BEGIN ~ END; // Use DECLARE statement
+    C. EXEC Procedure1 @A, @B ; // If ODBC is MSSQL(SQL Server). (';' can be omitted)
+
+  6. Function
+    - Modified to procedure and used like No.3
+    - Use DECLARE statement
+
+  7. Workflow can be created using declare statement
+
+  8. If you use 'Id Code' in IHP, IntelliLink have 'Id Code' with mapped like below
+    (Replacer can be changed)
+
+    - @SERVICE_CODE
+    - @INSTITUTION_CODE
+    - @FACILITY_CODE
+    - @SYSTEM_CODE
+
+  9. ODBC driver does not support size over 32kb(32768)
+
+  10. When mapping a number type that includes a decimal point, the data may be converted due to the decimal point symbol setting of the PC.
+    (Region - Additional settings - Numbers - Decimal symbol (Windows key + R , intl.cpl))
+      If you do not want to convert it, we recommend mapping it to a string using the to_char function.
+      
+  11. The 'sql' element's attribute value can be set to type="get|set"
+     - 'get' is used for 'SELECT' statements
+     - 'set' applies to all statements except 'SELECT'.
+==============================================================================================================================
+
+==============================================================================================================================
+                                                        FAQ
+
+  1. Error may occur when using DECLARE statement in Oracle 10g
+     - ORA-06550 PLS-00103 error:encountered the symbol (Oracle 10g does not recognize DECLARE statement)
+      => Function modified to procedure and use 'CALL test.Procedure(@A)'(Do not add ';' at the end of the sentence) statement
+==============================================================================================================================
+-->
+
+<root>
+
+  <package id="Spectra G3 - ODBC(sp_filter)">
+   
+    <sql id="[Inbound][ODBC] MWL Getter" type="get">
+      <![CDATA[
+        SELECT 
+          mwl_key AS MWL_KEY,
+          event_type AS EVENT_TYPE,
+          character_set AS CHARACTER_SET,
+          scheduled_aetitle AS SCHEDULED_AETITLE,
+          scheduled_dttm AS SCHEDULED_DTTM,
+          scheduled_modality AS SCHEDULED_MODALITY,
+          scheduled_station AS SCHEDULED_STATION,
+          scheduled_location AS SCHEDULED_LOCATION,
+          scheduled_proc_id AS SCHEDULED_PROC_ID,
+          scheduled_proc_desc AS SCHEDULED_PROC_DESC,
+          scheduled_action_codes AS SCHEDULED_ACTION_CODES,
+          scheduled_proc_status AS SCHEDULED_PROC_STATUS,
+          premedication AS PREMEDICATION,
+          contrast_agent AS CONTRAST_AGENT,
+          requested_proc_id AS REQUESTED_PROC_ID,
+          requested_proc_desc AS REQUESTED_PROC_DESC,
+          requested_proc_codes AS REQUESTED_PROC_CODES,
+          requested_proc_priority AS REQUESTED_PROC_PRIORITY,
+          requested_proc_reason AS REQUESTED_PROC_REASON,
+          requested_proc_comments AS REQUESTED_PROC_COMMENTS,
+          study_instance_uid AS STUDY_INSTANCE_UID,
+          proc_placer_order_no AS PROC_PLACER_ORDER_NO,
+          proc_filler_order_no AS PROC_FILLER_ORDER_NO,
+          accession_no AS ACCESSION_NO,
+          attend_doctor AS ATTEND_DOCTOR,
+          perform_doctor AS PERFORM_DOCTOR,
+          consult_doctor AS CONSULT_DOCTOR,
+          request_doctor AS REQUEST_DOCTOR,
+          refer_doctor AS REFER_DOCTOR,
+          request_department AS REQUEST_DEPARTMENT,
+          imaging_request_reason AS IMAGING_REQUEST_REASON,
+          imaging_request_comments AS IMAGING_REQUEST_COMMENTS,
+          imaging_request_dttm AS IMAGING_REQUEST_DTTM,
+          isr_placer_order_no AS ISR_PLACER_ORDER_NO,
+          isr_filler_order_no AS ISR_FILLER_ORDER_NO,
+          admission_id AS ADMISSION_ID,
+          patient_transport AS PATIENT_TRANSPORT,
+          patient_location AS PATIENT_LOCATION,
+          patient_residency AS PATIENT_RESIDENCY,
+          patient_name AS PATIENT_NAME,
+          patient_id AS PATIENT_ID,
+          other_patient_name AS OTHER_PATIENT_NAME,
+          other_patient_id AS OTHER_PATIENT_ID,
+          patient_birth_date AS PATIENT_BIRTH_DATE,
+          patient_sex AS PATIENT_SEX,
+          patient_weight AS PATIENT_WEIGHT,
+          patient_size AS PATIENT_SIZE,
+          patient_state AS PATIENT_STATE,
+          confidentiality AS CONFIDENTIALITY,
+          pregnancy_status AS PREGNANCY_STATUS,
+          medical_alerts AS MEDICAL_ALERTS,
+          contrast_allergies AS CONTRAST_ALLERGIES,
+          special_needs AS SPECIAL_NEEDS,
+          specialty AS SPECIALTY,
+          diagnosis AS DIAGNOSIS,
+          admit_dttm AS ADMIT_DTTM,
+          register_dttm AS REGISTER_DTTM
+          --study_ssn AS STUDY_SSN,
+          --insurance_code AS INSURANCE_CODE,
+          --emergency AS EMERGENCY,
+          --special_doctor AS SPECIAL_DOCTOR
+        FROM mwlWl
+        WHERE replica_dttm = 'ANY'
+        ORDER BY trigger_dttm
+      ]]>
+    </sql>
+    
+    <sql id="[Inbound][ODBC] Put MWL With Filter" type="set">
+      <![CDATA[
+        DECLARE
+            v_broker_aetitle                VARCHAR2(32)   := '';
+            v_order_control_id              VARCHAR2(16)   := '';
+            v_event_type                    VARCHAR2(32)   := @EVENT_TYPE;
+            v_character_set                 VARCHAR2(32)   := @CHARACTER_SET;
+            v_scheduled_aetitle             VARCHAR2(16)   := @SCHEDULED_AETITLE;
+            v_scheduled_dttm                VARCHAR2(32)   := @SCHEDULED_DTTM;
+            v_scheduled_modality            VARCHAR2(8)    := @SCHEDULED_MODALITY;
+            v_scheduled_station             VARCHAR2(32)   := @SCHEDULED_STATION;
+            v_scheduled_location            VARCHAR2(32)   := @SCHEDULED_LOCATION;
+            v_scheduled_proc_id             VARCHAR2(32)   := @SCHEDULED_PROC_ID;         -- 10
+            v_scheduled_proc_desc           VARCHAR2(64)   := @SCHEDULED_PROC_DESC;
+            v_scheduled_action_codes        VARCHAR2(256)  := @SCHEDULED_ACTION_CODES;
+            v_scheduled_proc_status         VARCHAR2(32)   := @SCHEDULED_PROC_STATUS;
+            v_premedication                 VARCHAR2(32)   := @PREMEDICATION;
+            v_contrast_agent                VARCHAR2(32)   := @CONTRAST_AGENT;
+            v_requested_proc_id             VARCHAR2(32)   := @REQUESTED_PROC_ID;
+            v_requested_proc_desc           VARCHAR2(64)   := @REQUESTED_PROC_DESC;
+            v_requested_proc_codes          VARCHAR2(256)  := @REQUESTED_PROC_CODES;
+            v_requested_proc_priority       VARCHAR2(32)   := @REQUESTED_PROC_PRIORITY;
+            v_requested_proc_reason         VARCHAR2(256)  := @REQUESTED_PROC_REASON;        -- 20
+            v_requested_proc_comments       VARCHAR2(4000) := @REQUESTED_PROC_COMMENTS;
+            v_study_instance_uid            VARCHAR2(64)   := @STUDY_INSTANCE_UID;
+            v_proc_placer_order_no          VARCHAR2(32)   := @PROC_PLACER_ORDER_NO;
+            v_proc_filler_order_no          VARCHAR2(32)   := @PROC_FILLER_ORDER_NO;
+            v_accession_no                  VARCHAR2(32)   := @ACCESSION_NO;
+            v_attend_doctor                 VARCHAR2(32)   := @ATTEND_DOCTOR;
+            v_perform_doctor                VARCHAR2(32)   := @PERFORM_DOCTOR;
+            v_consult_doctor                VARCHAR2(32)   := @CONSULT_DOCTOR;
+            v_request_doctor                VARCHAR2(32)   := @REQUEST_DOCTOR;
+            v_refer_doctor                  VARCHAR2(32)   := @REFER_DOCTOR;         -- 30
+            v_request_department            VARCHAR2(32)   := @REQUEST_DEPARTMENT;
+            v_imaging_request_reason        VARCHAR2(64)   := @IMAGING_REQUEST_REASON;
+            v_imaging_request_comments      VARCHAR2(4000) := @IMAGING_REQUEST_COMMENTS;
+            v_imaging_request_dttm          VARCHAR2(14)   := @IMAGING_REQUEST_DTTM;
+            v_isr_placer_order_no           VARCHAR2(32)   := @ISR_PLACER_ORDER_NO;
+            v_isr_filler_order_no           VARCHAR2(32)   := @ISR_FILLER_ORDER_NO;
+            v_admission_id                  VARCHAR2(32)   := @ADMISSION_ID;
+            v_patient_transport             VARCHAR2(32)   := @PATIENT_TRANSPORT;
+            v_patient_location              VARCHAR2(32)   := @PATIENT_LOCATION;
+            v_patient_residency             VARCHAR2(80)   := @PATIENT_RESIDENCY;         -- 40
+            v_patient_name                  VARCHAR2(64)   := @PATIENT_NAME;
+            v_patient_id                    VARCHAR2(64)   := @PATIENT_ID;
+            v_other_patient_name            VARCHAR2(64)   := @OTHER_PATIENT_NAME;
+            v_other_patient_id              VARCHAR2(64)   := @OTHER_PATIENT_ID;
+            v_patient_birth_dttm            VARCHAR2(8)    := @PATIENT_BIRTH_DATE;
+            v_patient_sex                   CHAR(1)        := @PATIENT_SEX;
+            v_patient_weight                VARCHAR2(16)   := @PATIENT_WEIGHT;
+            v_patient_size                  VARCHAR2(16)   := @PATIENT_SIZE;
+            v_patient_state                 VARCHAR2(256)  := @PATIENT_STATE;
+            v_confidentiality               VARCHAR2(256)  := @CONFIDENTIALITY;        -- 50
+            v_pregnancy_status              VARCHAR2(256)  := @PREGNANCY_STATUS;
+            v_medical_alerts                VARCHAR2(256)  := @MEDICAL_ALERTS;
+            v_contrast_allergies            VARCHAR2(256)  := @CONTRAST_ALLERGIES;
+            v_special_needs                 VARCHAR2(32)   := @SPECIAL_NEEDS;
+            v_specialty                     VARCHAR2(32)   := @SPECIALTY;
+            v_diagnosis                     VARCHAR2(2048) := @DIAGNOSIS;
+            v_admit_dttm                    VARCHAR2(32)   := @ADMIT_DTTM;
+            v_register_dttm                 VARCHAR2(32)   := @REGISTER_DTTM;
+            v_study_ssn                     VARCHAR2(64)   := @STUDY_SSN;
+            v_insurance_code                VARCHAR2(64)   := @INSURANCE_CODE;         -- 60
+            v_emergency                     VARCHAR2(8)    := @EMERGENCY;
+            v_special_doctor                VARCHAR2(32)   := @SPECIAL_DOCTOR;         -- 62
+            
+            v_m_patient_id_issuer           VARCHAR2(32);
+            v_m_last_name                   VARCHAR2(32);
+            v_m_first_name                  VARCHAR2(32);
+            v_m_middle_name                 VARCHAR2(32);
+            v_m_prefix                      VARCHAR2(32);
+            v_m_suffix                      VARCHAR2(32);
+            v_m_race_code                   VARCHAR2(32);
+            v_m_account_no                  VARCHAR2(32);         -- 70
+            v_m_address                     VARCHAR2(128);
+            v_m_order_entry_user_id         VARCHAR2(64);
+            v_m_order_entry_location        VARCHAR2(512);
+            v_m_order_callback_phone_no     VARCHAR2(512);
+            v_m_req_proc_status             VARCHAR2(8);
+            v_m_req_proc_code_scheme        VARCHAR2(32);
+            v_m_req_proc_code_version       VARCHAR2(32);
+            v_m_req_proc_code_meaning       VARCHAR2(256);
+            v_m_req_proc_location           VARCHAR2(32);
+            v_m_patient_arrange             VARCHAR2(32);         -- 80
+            v_m_source_aetitle              VARCHAR2(16);
+            v_m_broker_type                 VARCHAR2(16);         -- 82
+        
+        BEGIN
+            
+            SP_FILTER.MWL_TO_MWL(
+                    v_broker_aetitle, 
+                    v_order_control_id,
+                    v_event_type,
+                    v_character_set,
+                    v_scheduled_aetitle,
+                    v_scheduled_dttm,
+                    v_scheduled_modality,
+                    v_scheduled_station,
+                    v_scheduled_location,
+                    v_scheduled_proc_id,        -- 10
+                    v_scheduled_proc_desc,
+                    v_scheduled_action_codes,
+                    v_scheduled_proc_status,
+                    v_premedication,
+                    v_contrast_agent,
+                    v_requested_proc_id,
+                    v_requested_proc_desc,
+                    v_requested_proc_codes,
+                    v_requested_proc_priority,
+                    v_requested_proc_reason,    -- 20
+                    v_requested_proc_comments,
+                    v_study_instance_uid,
+                    v_proc_placer_order_no,
+                    v_proc_filler_order_no,
+                    v_accession_no,
+                    v_attend_doctor,
+                    v_perform_doctor,
+                    v_consult_doctor,
+                    v_request_doctor,
+                    v_refer_doctor,             -- 30
+                    v_request_department,
+                    v_imaging_request_reason,
+                    v_imaging_request_comments,
+                    v_imaging_request_dttm,
+                    v_isr_placer_order_no,
+                    v_isr_filler_order_no,
+                    v_admission_id,
+                    v_patient_transport,
+                    v_patient_location,
+                    v_patient_residency,        -- 40
+                    v_patient_name,
+                    v_patient_id,
+                    v_other_patient_name,
+                    v_other_patient_id,
+                    v_patient_birth_dttm,
+                    v_patient_sex,
+                    v_patient_weight,
+                    v_patient_size,
+                    v_patient_state,
+                    v_confidentiality,          -- 50
+                    v_pregnancy_status,
+                    v_medical_alerts,
+                    v_contrast_allergies,
+                    v_special_needs,
+                    v_specialty,
+                    v_diagnosis,
+                    v_admit_dttm,
+                    v_register_dttm,
+                    v_study_ssn,
+                    v_insurance_code,           -- 60
+                    v_emergency,
+                    v_special_doctor,           -- 62
+                    
+                    v_m_patient_id_issuer,
+                    v_m_last_name,
+                    v_m_first_name,
+                    v_m_middle_name,
+                    v_m_prefix,
+                    v_m_suffix,
+                    v_m_race_code,
+                    v_m_account_no,             -- 70
+                    v_m_address,
+                    v_m_order_entry_user_id,
+                    v_m_order_entry_location,
+                    v_m_order_callback_phone_no,
+                    v_m_req_proc_status,
+                    v_m_req_proc_code_scheme,
+                    v_m_req_proc_code_version,
+                    v_m_req_proc_code_meaning,
+                    v_m_req_proc_location,
+                    v_m_patient_arrange,        -- 80
+                    v_m_source_aetitle,
+                    v_m_broker_type             -- 82
+                );
+            
+            SP_MAPPER.PUT_MWL(
+                    v_event_type,
+                    v_order_control_id,
+                    v_character_set,
+                    v_scheduled_aetitle,
+                    v_scheduled_dttm,
+                    v_scheduled_modality,
+                    v_scheduled_station,
+                    v_scheduled_location,
+                    v_scheduled_proc_id,
+                    v_scheduled_proc_desc,      -- 10
+                    v_scheduled_action_codes,
+                    v_scheduled_proc_status,
+                    v_premedication,
+                    v_contrast_agent,
+                    v_requested_proc_id,
+                    v_requested_proc_desc,
+                    v_requested_proc_codes,
+                    v_requested_proc_priority,
+                    v_requested_proc_reason,
+                    v_requested_proc_comments,  -- 20
+                    v_study_instance_uid,
+                    v_proc_placer_order_no,
+                    v_proc_filler_order_no,
+                    v_accession_no,
+                    v_attend_doctor,
+                    v_perform_doctor,
+                    v_consult_doctor,
+                    v_request_doctor,
+                    v_refer_doctor,
+                    v_request_department,       -- 30
+                    v_imaging_request_reason,
+                    v_imaging_request_comments,
+                    v_imaging_request_dttm,
+                    v_isr_placer_order_no,
+                    v_isr_filler_order_no,
+                    v_admission_id,
+                    v_patient_transport,
+                    v_patient_location,
+                    v_patient_residency,
+                    v_patient_name,             -- 40
+                    v_patient_id,
+                    v_other_patient_name,
+                    v_other_patient_id,
+                    v_patient_birth_dttm,
+                    v_patient_sex,
+                    v_patient_weight,
+                    v_patient_size,
+                    v_patient_state,
+                    v_confidentiality,
+                    v_pregnancy_status,         -- 50
+                    v_medical_alerts,
+                    v_contrast_allergies,
+                    v_special_needs,
+                    v_specialty,
+                    v_diagnosis,
+                    v_admit_dttm,
+                    v_register_dttm, 
+                    v_study_ssn                 -- 58
+                );
+        END;
+      ]]>
+    </sql>
+
+    <sql id="[Inbound][ODBC] Put Order With Filter" type="set">
+      <![CDATA[
+        DECLARE
+            v_study_key                     NUMBER;
+            v_msps_key                      NUMBER;
+            v_insurancefee_key              NUMBER;
+            
+            v_broker_aetitle                VARCHAR2(32)   := '';
+            v_order_control_id              VARCHAR2(16)   := '';
+            v_event_type                    VARCHAR2(32)   := @EVENT_TYPE;
+            v_character_set                 VARCHAR2(32)   := @CHARACTER_SET;
+            v_scheduled_aetitle             VARCHAR2(16)   := @SCHEDULED_AETITLE;
+            v_scheduled_dttm                VARCHAR2(32)   := @SCHEDULED_DTTM;
+            v_scheduled_modality            VARCHAR2(8)    := @SCHEDULED_MODALITY;
+            v_scheduled_station             VARCHAR2(32)   := @SCHEDULED_STATION;
+            v_scheduled_location            VARCHAR2(32)   := @SCHEDULED_LOCATION;
+            v_scheduled_proc_id             VARCHAR2(32)   := @SCHEDULED_PROC_ID;         -- 10
+            v_scheduled_proc_desc           VARCHAR2(64)   := @SCHEDULED_PROC_DESC;
+            v_scheduled_action_codes        VARCHAR2(256)  := @SCHEDULED_ACTION_CODES;
+            v_scheduled_proc_status         VARCHAR2(32)   := @SCHEDULED_PROC_STATUS;
+            v_premedication                 VARCHAR2(32)   := @PREMEDICATION;
+            v_contrast_agent                VARCHAR2(32)   := @CONTRAST_AGENT;
+            v_requested_proc_id             VARCHAR2(32)   := @REQUESTED_PROC_ID;
+            v_requested_proc_desc           VARCHAR2(64)   := @REQUESTED_PROC_DESC;
+            v_requested_proc_codes          VARCHAR2(256)  := @REQUESTED_PROC_CODES;
+            v_requested_proc_priority       VARCHAR2(32)   := @REQUESTED_PROC_PRIORITY;
+            v_requested_proc_reason         VARCHAR2(256)  := @REQUESTED_PROC_REASON;        -- 20
+            v_requested_proc_comments       VARCHAR2(4000) := @REQUESTED_PROC_COMMENTS;
+            v_study_instance_uid            VARCHAR2(64)   := @STUDY_INSTANCE_UID;
+            v_proc_placer_order_no          VARCHAR2(32)   := @PROC_PLACER_ORDER_NO;
+            v_proc_filler_order_no          VARCHAR2(32)   := @PROC_FILLER_ORDER_NO;
+            v_accession_no                  VARCHAR2(32)   := @ACCESSION_NO;
+            v_attend_doctor                 VARCHAR2(32)   := @ATTEND_DOCTOR;
+            v_perform_doctor                VARCHAR2(32)   := @PERFORM_DOCTOR;
+            v_consult_doctor                VARCHAR2(32)   := @CONSULT_DOCTOR;
+            v_request_doctor                VARCHAR2(32)   := @REQUEST_DOCTOR;
+            v_refer_doctor                  VARCHAR2(32)   := @REFER_DOCTOR;         -- 30
+            v_request_department            VARCHAR2(32)   := @REQUEST_DEPARTMENT;
+            v_imaging_request_reason        VARCHAR2(64)   := @IMAGING_REQUEST_REASON;
+            v_imaging_request_comments      VARCHAR2(4000) := @IMAGING_REQUEST_COMMENTS;
+            v_imaging_request_dttm          VARCHAR2(14)   := @IMAGING_REQUEST_DTTM;
+            v_isr_placer_order_no           VARCHAR2(32)   := @ISR_PLACER_ORDER_NO;
+            v_isr_filler_order_no           VARCHAR2(32)   := @ISR_FILLER_ORDER_NO;
+            v_admission_id                  VARCHAR2(32)   := @ADMISSION_ID;
+            v_patient_transport             VARCHAR2(32)   := @PATIENT_TRANSPORT;
+            v_patient_location              VARCHAR2(32)   := @PATIENT_LOCATION;
+            v_patient_residency             VARCHAR2(80)   := @PATIENT_RESIDENCY;         -- 40
+            v_patient_name                  VARCHAR2(64)   := @PATIENT_NAME;
+            v_patient_id                    VARCHAR2(64)   := @PATIENT_ID;
+            v_other_patient_name            VARCHAR2(64)   := @OTHER_PATIENT_NAME;
+            v_other_patient_id              VARCHAR2(64)   := @OTHER_PATIENT_ID;
+            v_patient_birth_dttm            VARCHAR2(8)    := @PATIENT_BIRTH_DATE;
+            v_patient_sex                   CHAR(1)        := @PATIENT_SEX;
+            v_patient_weight                VARCHAR2(16)   := @PATIENT_WEIGHT;
+            v_patient_size                  VARCHAR2(16)   := @PATIENT_SIZE;
+            v_patient_state                 VARCHAR2(256)  := @PATIENT_STATE;
+            v_confidentiality               VARCHAR2(256)  := @CONFIDENTIALITY;        -- 50
+            v_pregnancy_status              VARCHAR2(256)  := @PREGNANCY_STATUS;
+            v_medical_alerts                VARCHAR2(256)  := @MEDICAL_ALERTS;
+            v_contrast_allergies            VARCHAR2(256)  := @CONTRAST_ALLERGIES;
+            v_special_needs                 VARCHAR2(32)   := @SPECIAL_NEEDS;
+            v_specialty                     VARCHAR2(32)   := @SPECIALTY;
+            v_diagnosis                     VARCHAR2(2048) := @DIAGNOSIS;
+            v_admit_dttm                    VARCHAR2(32)   := @ADMIT_DTTM;
+            v_register_dttm                 VARCHAR2(32)   := @REGISTER_DTTM;
+            v_study_ssn                     VARCHAR2(64)   := @STUDY_SSN;
+            v_insurance_code                VARCHAR2(64)   := @INSURANCE_CODE;         -- 60
+            v_emergency                     VARCHAR2(8)    := @EMERGENCY;
+            v_special_doctor                VARCHAR2(32)   := @SPECIAL_DOCTOR;         -- 62
+            
+            v_m_patient_id_issuer           VARCHAR2(32);
+            v_m_last_name                   VARCHAR2(32);
+            v_m_first_name                  VARCHAR2(32);
+            v_m_middle_name                 VARCHAR2(32);
+            v_m_prefix                      VARCHAR2(32);
+            v_m_suffix                      VARCHAR2(32);
+            v_m_race_code                   VARCHAR2(32);
+            v_m_account_no                  VARCHAR2(32);         -- 70
+            v_m_address                     VARCHAR2(128);
+            v_m_order_entry_user_id         VARCHAR2(64);
+            v_m_order_entry_location        VARCHAR2(512);
+            v_m_order_callback_phone_no     VARCHAR2(512);
+            v_m_req_proc_status             VARCHAR2(8);
+            v_m_req_proc_code_scheme        VARCHAR2(32);
+            v_m_req_proc_code_version       VARCHAR2(32);
+            v_m_req_proc_code_meaning       VARCHAR2(256);
+            v_m_req_proc_location           VARCHAR2(32);
+            v_m_patient_arrange             VARCHAR2(32);         -- 80
+            v_m_source_aetitle              VARCHAR2(16);
+            v_m_broker_type                 VARCHAR2(16);         -- 82
+        
+        BEGIN
+        
+            SP_FILTER.mwl_to_mwl(
+                    v_broker_aetitle, 
+                    v_order_control_id,
+                    v_event_type,
+                    v_character_set,
+                    v_scheduled_aetitle,
+                    v_scheduled_dttm,
+                    v_scheduled_modality,
+                    v_scheduled_station,
+                    v_scheduled_location,
+                    v_scheduled_proc_id,        -- 10
+                    v_scheduled_proc_desc,
+                    v_scheduled_action_codes,
+                    v_scheduled_proc_status,
+                    v_premedication,
+                    v_contrast_agent,
+                    v_requested_proc_id,
+                    v_requested_proc_desc,
+                    v_requested_proc_codes,
+                    v_requested_proc_priority,
+                    v_requested_proc_reason,    -- 20
+                    v_requested_proc_comments,
+                    v_study_instance_uid,
+                    v_proc_placer_order_no,
+                    v_proc_filler_order_no,
+                    v_accession_no,
+                    v_attend_doctor,
+                    v_perform_doctor,
+                    v_consult_doctor,
+                    v_request_doctor,
+                    v_refer_doctor,             -- 30
+                    v_request_department,
+                    v_imaging_request_reason,
+                    v_imaging_request_comments,
+                    v_imaging_request_dttm,
+                    v_isr_placer_order_no,
+                    v_isr_filler_order_no,
+                    v_admission_id,
+                    v_patient_transport,
+                    v_patient_location,
+                    v_patient_residency,        -- 40
+                    v_patient_name,
+                    v_patient_id,
+                    v_other_patient_name,
+                    v_other_patient_id,
+                    v_patient_birth_dttm,
+                    v_patient_sex,
+                    v_patient_weight,
+                    v_patient_size,
+                    v_patient_state,
+                    v_confidentiality,          -- 50
+                    v_pregnancy_status,
+                    v_medical_alerts,
+                    v_contrast_allergies,
+                    v_special_needs,
+                    v_specialty,
+                    v_diagnosis,
+                    v_admit_dttm,
+                    v_register_dttm,
+                    v_study_ssn,
+                    v_insurance_code,           -- 60
+                    v_emergency,
+                    v_special_doctor,           -- 62
+                    
+                    v_m_patient_id_issuer,
+                    v_m_last_name,
+                    v_m_first_name,
+                    v_m_middle_name,
+                    v_m_prefix,
+                    v_m_suffix,
+                    v_m_race_code,
+                    v_m_account_no,             -- 70
+                    v_m_address,
+                    v_m_order_entry_user_id, 
+                    v_m_order_entry_location, 
+                    v_m_order_callback_phone_no, 
+                    v_m_req_proc_status,
+                    v_m_req_proc_code_scheme,
+                    v_m_req_proc_code_version,
+                    v_m_req_proc_code_meaning,
+                    v_m_req_proc_location,
+                    v_m_patient_arrange,        -- 80
+                    v_m_source_aetitle,
+                    v_m_broker_type             -- 82
+                );
+            
+            v_study_key := SP_MAPPER.put_order(
+                    v_event_type,
+                    v_order_control_id              ,
+                    v_patient_id                    ,
+                    v_m_patient_id_issuer           , -- v_patient_id_issuer_code
+                    v_patient_name                  ,
+                    v_m_last_name                   , -- v_last_name
+                    v_m_first_name                  , -- v_first_name
+                    v_m_middle_name                 , -- v_middle_name
+                    v_m_prefix                      , -- v_prefix
+                    v_m_suffix                      , -- v_suffix                -- 10
+                    v_patient_birth_dttm            ,
+                    v_patient_sex                   ,
+                    v_m_race_code                   , -- v_race_code
+                    v_confidentiality               ,
+                    v_m_account_no                  , -- v_account_no
+                    v_m_address                     , -- v_address
+                    v_patient_location              ,
+                    v_patient_residency             ,
+                    v_refer_doctor                  , -- v_refer_doctor_id
+                    v_consult_doctor                , -- v_consult_doctor_id    -- 20
+                    v_proc_placer_order_no          , -- v_placer_order_id
+                    v_proc_filler_order_no          , -- v_filler_order_id
+                    v_accession_no                  , -- v_access_no
+                    v_scheduled_proc_status         , -- v_order_stat
+                    v_imaging_request_reason        , -- v_order_reason 
+                    v_imaging_request_comments      , -- v_order_comments
+                    v_imaging_request_dttm          , -- v_order_dttm
+                    v_request_doctor                , -- v_order_doctor_id
+                    v_request_department            , -- v_order_department
+                    v_m_order_entry_user_id         , -- v_order_entry_user_id    -- 30
+                    v_m_order_entry_location        , -- v_order_entry_location
+                    v_m_order_callback_phone_no     , -- v_order_callback_phone_no
+                    v_attend_doctor                 , -- v_attend_doctor_id
+                    v_perform_doctor                , -- v_perform_doctor_id
+                    v_m_req_proc_status             , -- v_reqproc_stat
+                    v_requested_proc_id             , -- v_reqproc_id
+                    v_requested_proc_desc           , -- v_reqproc_desc
+                    v_requested_proc_codes          , -- v_reqproc_code_value
+                    v_m_req_proc_code_scheme        , -- v_reqproc_code_scheme
+                    v_m_req_proc_code_version       , -- v_reqproc_code_version    -- 40
+                    v_m_req_proc_code_meaning       , -- v_reqproc_code_meaning
+                    v_study_instance_uid            ,
+                    v_requested_proc_reason         , -- v_reqproc_reason
+                    v_requested_proc_comments       , -- v_reqproc_comments
+                    v_requested_proc_priority       , -- v_reqproc_priority
+                    v_m_req_proc_location           , -- v_reqproc_location
+                    v_m_patient_arrange             , -- v_patient_arrange
+                    v_diagnosis                     ,
+                    v_other_patient_id              ,
+                    v_other_patient_name            , -- 50
+                    v_m_source_aetitle              , -- v_source_aetitle
+                    v_broker_aetitle                ,
+                    v_m_broker_type                 , -- v_broker_type
+                    v_study_ssn                     , -- v_patient_ssn
+                    null                            , -- v_diagnosis_code
+                    null                            , -- v_diagnosis_code_meaning
+                    null                            , -- v_note_and_comments
+                    null                            , -- v_sending_facility
+                    v_patient_weight                ,
+                    v_patient_size                  , -- 60
+                    null                            , -- v_vet_sex_neutered
+                    null                            , -- v_species_code_description
+                    null                            , -- v_breed_code_description
+                    null                            , -- v_nk1_name
+                    null                            , -- v_nk1_relationship
+                    null                              -- v_nk1_organization_name -- 66
+                );
+
+            IF v_order_control_id = 'NW' AND v_scheduled_proc_status IN ('120', '110', 'SC') THEN
+              v_msps_key := SP_MAPPER.put_msps(
+                            v_study_key, -- study_key
+                            v_requested_proc_codes, -- reqproc_code_value
+                            v_m_req_proc_code_scheme, -- reqproc_code_scheme
+                            v_scheduled_proc_id, -- sps_id
+                            v_scheduled_modality, -- modality
+                            v_scheduled_dttm, -- sps_start_dttm
+                            v_scheduled_proc_id, -- protcode_value
+                            v_scheduled_action_codes, -- protcode_scheme
+                            v_scheduled_proc_desc, -- protcode_meaning
+                            1, -- index
+                            v_scheduled_aetitle, -- aetitle
+                            v_scheduled_location, -- scheduled_location
+                            v_m_broker_type, -- broker_type : 'HL7-PACS' = PACS Only, 'HL7-IHE' = RIS & PACS, 'ODBC' = ODBC
+                            v_order_control_id, -- order_control_id
+                            v_scheduled_proc_status -- order_stat
+                          );
+            END IF;
+          
+            /*
+            v_insurancefee_key := SP_MAPPER.put_insurancefee(
+                                  v_study_instance_uid,
+                                  v_patient_id,
+                                  v_patient_birth_dttm,
+                                  v_scheduled_dttm, -- request_dttm
+                                  v_requested_proc_id, -- request_code
+                                  v_requested_proc_desc, -- request_name
+                                  v_accession_no,
+                                  v_insurance_code,
+                                  v_scheduled_modality, -- modality
+                                  v_emergency, -- emergency
+                                  v_special_doctor -- special_doctor
+                          );
+            */
+        END;
+      ]]>
+    </sql>
+
+    <sql id="[Post-Process][ODBC] Update MWL Getter" type="set">
+      <![CDATA[
+        UPDATE mwlwl SET replica_dttm = SYSDATE WHERE mwl_key = #MWL_KEY
+      ]]>
+    </sql>
+
+    <sql id="[Inbound][ODBC] Patient Getter" type="get">
+      <![CDATA[
+        SELECT  
+          patientwl_key AS PATIENTWL_KEY,
+          RTRIM(event_type) AS EVENT_TYPE,
+          SUBSTR(patient_id, 1, 32) AS PATIENT_ID,
+          SUBSTR(patient_name, 1, 64) AS PATIENT_NAME,
+          SUBSTR(english_name, 1, 32) AS ENGLISH_NAME,
+          SUBSTR(patient_ssn, 1, 32) AS PATIENT_SSN,
+          SUBSTR(patient_birth_dttm, 1, 8) AS PATIENT_BIRTH_DTTM,
+          SUBSTR(patient_sex, 1, 3) AS PATIENT_SEX,
+          SUBSTR(patient_weight, 1, 8) AS PATIENT_WEIGHT,
+          SUBSTR(patient_size, 1, 8) AS PATIENT_SIZE,
+          SUBSTR(ethnic_group, 1, 32) AS ETHNIC_GROUP,
+          SUBSTR(tel_no, 1, 32) AS TEL_NO,
+          SUBSTR(fax_no, 1, 32) AS FAX_NO,
+          SUBSTR(zipcode, 1, 16) AS ZIPCODE,
+          SUBSTR(address, 1, 128) AS ADDRESS,
+          SUBSTR(email, 1, 64) AS EMAIL,
+          SUBSTR(blood_type, 1, 8) AS BLOOD_TYPE,
+          SUBSTR(pregnancy_status, 1, 3) AS PREGNANCY_STATUS,
+          SUBSTR(current_location, 1, 32) AS CURRENT_LOCATION,
+          SUBSTR(current_residency, 1, 32) AS CURRENT_RESIDENCY,
+          SUBSTR(current_department, 1, 32) AS CURRENT_DEPARTMENT,
+          SUBSTR(current_doctor_id, 1, 32) AS CURRENT_DOCTOR_ID,
+          SUBSTR(current_doctor_name, 1, 64) AS CURRENT_DOCTOR_NAME,
+          SUBSTR(admit_dttm, 1, 14) AS ADMIT_DTTM,
+          SUBSTR(discharge_dttm, 1, 14) AS DISCHARGE_DTTM
+        FROM patientWl
+        WHERE replica_dttm = 'ANY'
+        ORDER BY trigger_dttm
+      ]]>
+    </sql>
+
+    <sql id="[Inbound][ODBC] Put Patient With Filter" type="set">
+      <![CDATA[
+        DECLARE
+            v_patient_key                   NUMBER;
+
+            v_broker_aetitle                VARCHAR2(32)   := '';
+            v_event_type                    VARCHAR2(32)   := @EVENT_TYPE;
+            v_patient_id                    VARCHAR2(64)   := @PATIENT_ID;
+            v_patient_name                  VARCHAR2(64)   := @PATIENT_NAME;
+            v_english_name                  VARCHAR2(32)   := @ENGLISH_NAME;
+            v_patient_ssn                   VARCHAR2(32)   := @PATIENT_SSN;
+            v_patient_birth_dttm            VARCHAR2(8)    := @PATIENT_BIRTH_DTTM;
+            v_patient_sex                   VARCHAR2(8)    := @PATIENT_SEX;
+            v_patient_weight                VARCHAR2(8)    := @PATIENT_WEIGHT;
+            v_patient_size                  VARCHAR2(8)    := @PATIENT_SIZE; -- 10
+            v_ethnic_group                  VARCHAR2(32)   := @ETHNIC_GROUP;
+            v_tel_no                        VARCHAR2(32)   := @TEL_NO;
+            v_fax_no                        VARCHAR2(32)   := @FAX_NO;
+            v_zipcode                       VARCHAR2(16)   := @ZIPCODE;
+            v_address                       VARCHAR2(128)  := @ADDRESS;
+            v_email                         VARCHAR2(64)   := @EMAIL;
+            v_blood_type                    VARCHAR2(8)    := @BLOOD_TYPE;
+            v_pregnancy_status              VARCHAR2(8)    := @PREGNANCY_STATUS;
+            v_current_location              VARCHAR2(32)   := @CURRENT_LOCATION;
+            v_current_residency             VARCHAR2(32)   := @CURRENT_RESIDENCY; -- 20
+            v_current_department            VARCHAR2(32)   := @CURRENT_DEPARTMENT;
+            v_current_doctor_id             VARCHAR2(32)   := @CURRENT_DOCTOR_ID;
+            v_current_doctor_name           VARCHAR2(64)   := @CURRENT_DOCTOR_NAME;
+            v_admit_dttm                    VARCHAR2(14)   := @ADMIT_DTTM;
+            v_discharge_dttm                VARCHAR2(14)   := @DISCHARGE_DTTM; -- 25
+            
+            v_p_prior_patient_id            VARCHAR2(64);
+            v_p_patient_id_issuer           VARCHAR2(32);
+            v_p_last_name                   VARCHAR2(32);
+            v_p_first_name                  VARCHAR2(32);
+            v_p_middle_name                 VARCHAR2(32); -- 30
+            v_p_prefix                      VARCHAR2(32);
+            v_p_suffix                      VARCHAR2(32);
+            v_p_marital_status              CHAR(1);
+            v_p_confidentiality             CHAR(1);
+            v_p_patient_death_dttm          VARCHAR2(8);
+            v_p_blood_type_rh               CHAR(1);
+            v_p_citizenship                 VARCHAR2(32);
+            v_p_occupation                  VARCHAR2(32);
+            v_p_race_code                   VARCHAR2(32);
+            v_p_language_code               VARCHAR2(32); -- 40
+            v_p_religion_code               VARCHAR2(32);
+            v_p_birth_place                 VARCHAR2(32);
+            v_p_multiple_birth_status       VARCHAR2(32);
+            v_p_birth_order                 VARCHAR2(32);
+            v_p_cell_phone_no               VARCHAR2(40);
+            v_p_pregnancy_code              VARCHAR2(32);
+            v_p_patient_status              CHAR(1);
+            v_p_account_number              VARCHAR2(32);
+            v_p_contact_type                CHAR(3);
+            v_p_business_phone_no           VARCHAR2(40); -- 50
+            v_p_city                        VARCHAR2(32);
+            v_p_state                       VARCHAR2(32);
+            v_p_country                     VARCHAR2(64);
+            v_p_visit_number                VARCHAR2(32);
+            v_p_visit_status                CHAR(1);
+            v_p_consult_doctor_id           VARCHAR2(64);
+            v_p_institution_code            VARCHAR2(32);
+            v_p_visit_comments              VARCHAR2(4000);
+            v_p_admit_route                 CHAR(1);
+            v_p_last_menstrual_dttm         VARCHAR2(14); -- 60
+            v_p_code_abbreviation           VARCHAR2(32);
+            v_p_station_code                VARCHAR2(32);
+            v_p_consult_doctor_name         VARCHAR2(64);
+            v_p_broker_type                 VARCHAR2(16); -- 64
+        
+        BEGIN
+        
+            SP_FILTER.patient_to_patient(
+                    v_broker_aetitle,
+                    v_event_type,
+                    v_patient_id,
+                    v_patient_name,
+                    v_english_name,
+                    v_patient_ssn,
+                    v_patient_birth_dttm,
+                    v_patient_sex,
+                    v_patient_weight,
+                    v_patient_size,        -- 10
+                    v_ethnic_group,
+                    v_tel_no,
+                    v_fax_no,
+                    v_zipcode,
+                    v_address,
+                    v_email,
+                    v_blood_type,
+                    v_pregnancy_status,
+                    v_current_location,
+                    v_current_residency,   -- 20
+                    v_current_department,
+                    v_current_doctor_id,
+                    v_current_doctor_name,
+                    v_admit_dttm,
+                    v_discharge_dttm,
+                    
+                    v_p_prior_patient_id,
+                    v_p_patient_id_issuer,
+                    v_p_last_name,
+                    v_p_first_name,
+                    v_p_middle_name,           -- 30
+                    v_p_prefix,
+                    v_p_suffix,
+                    v_p_marital_status,
+                    v_p_confidentiality,
+                    v_p_patient_death_dttm,
+                    v_p_blood_type_rh,
+                    v_p_citizenship,
+                    v_p_occupation,
+                    v_p_race_code,
+                    v_p_language_code,      -- 40
+                    v_p_religion_code,
+                    v_p_birth_place,
+                    v_p_multiple_birth_status,
+                    v_p_birth_order,
+                    v_p_cell_phone_no,
+                    v_p_pregnancy_code,
+                    v_p_patient_status,
+                    v_p_account_number,
+                    v_p_contact_type,
+                    v_p_business_phone_no,    -- 50
+                    v_p_city,
+                    v_p_state,
+                    v_p_country,
+                    v_p_visit_number,
+                    v_p_visit_status,
+                    v_p_consult_doctor_id,
+                    v_p_institution_code,
+                    v_p_visit_comments,
+                    v_p_admit_route,
+                    v_p_last_menstrual_dttm,  -- 60
+                    v_p_code_abbreviation,
+                    v_p_station_code,
+                    v_p_consult_doctor_name,
+                    v_p_broker_type           -- 64
+                );
+            
+            v_patient_key := SP_MAPPER.put_patient(
+                    v_event_type,
+                    v_patient_id                    ,
+                    v_p_prior_patient_id            , -- v_prior_patient_id
+                    v_p_patient_id_issuer           , -- v_patient_id_issuer_code
+                    v_patient_ssn                   ,
+                    v_patient_name                  ,
+                    v_p_last_name                   , -- v_last_name
+                    v_p_first_name                  , -- v_first_name
+                    v_p_middle_name                 , -- v_middle_name
+                    v_p_prefix                      , -- v_prefix                  -- 10
+                    v_p_suffix                      , -- v_suffix
+                    v_p_marital_status              , -- v_marital_stat
+                    v_p_confidentiality             , -- v_confidentiality
+                    v_patient_birth_dttm            ,
+                    v_p_patient_death_dttm          , -- v_patient_death_dttm
+                    v_patient_sex                   ,
+                    v_patient_size                  ,
+                    v_patient_weight                ,
+                    v_blood_type                    ,
+                    v_p_blood_type_rh               , -- v_blood_type_rh           -- 20
+                    v_p_citizenship                 , -- v_citizenship
+                    v_p_occupation                  , -- v_occupation
+                    v_p_race_code                   , -- v_race_code
+                    v_p_language_code               , -- v_language_code
+                    v_p_religion_code               , -- v_religion_code
+                    v_p_birth_place                 , -- v_birthplace
+                    v_p_multiple_birth_status       , -- v_multiple_birth_status
+                    v_p_birth_order                 , -- v_birth_order
+                    v_email                         ,
+                    v_p_cell_phone_no               , -- v_phone_no    -- 30
+                    v_p_pregnancy_code              , -- v_pregnancy_code
+                    v_p_patient_status              , -- v_patient_stat
+                    v_p_account_number              , -- v_account_no
+                    v_p_contact_type                , -- v_contact_type
+                    v_tel_no                        , -- v_home_phone_no
+                    v_p_business_phone_no           , -- v_busi_phone_no
+                    v_fax_no                        ,
+                    v_address                       ,
+                    v_p_city                        , -- v_city
+                    v_p_state                       , -- v_state -- 40
+                    v_p_country                     , -- v_country
+                    v_zipcode                       ,
+                    v_p_visit_number                , -- v_visit_number
+                    v_p_visit_status                , -- v_visit_stat
+                    v_admit_dttm                    ,
+                    v_discharge_dttm                ,
+                    v_current_location              , -- v_patient_location
+                    v_current_residency             , -- v_patient_residence
+                    v_current_doctor_id             , -- v_refer_doctor_id
+                    v_p_consult_doctor_id           , -- v_consult_doctor_id -- 50
+                    v_p_institution_code            , -- v_institution_code    
+                    v_p_visit_comments              , -- v_visit_comment
+                    v_p_admit_route                 , -- v_admit_route
+                    v_p_last_menstrual_dttm         , -- v_lastmen_strual_dttm
+                    v_p_pregnancy_code              , -- v_pregnancy_status
+                    v_p_code_abbreviation           , -- v_code_abbreviation
+                    v_p_station_code                , -- v_station_code
+                    v_english_name                  ,
+                    v_ethnic_group                  ,
+                    v_current_department            , -- 60
+                    v_current_doctor_name           , -- v_refer_doctor_name
+                    v_p_consult_doctor_name         , -- v_consult_doctor_name
+                    v_broker_aetitle                ,
+                    v_p_broker_type                   -- v_broker_type -- 64
+                );
+        END;
+      ]]>
+    </sql>
+	
+    <sql id="[Post-Process][ODBC] Update Patient Getter" type="set">
+      <![CDATA[
+        UPDATE patientwl SET replica_dttm = SYSDATE WHERE patientwl_key = #PATIENTWL_KEY
+      ]]>
+    </sql>
+
+    <sql id="[Inbound][ODBC] Report Getter" type="get">
+      <![CDATA[
+        SELECT  
+          REPORTWL_KEY,
+          exam_id AS EXAM_ID,
+          patient_id AS PATIENT_ID,
+          NVL(report_stat, 'F') AS REPORT_STAT,
+          creator_id AS CREATOR_ID,
+          creator_name AS CREATOR_NAME,
+          create_dttm AS CREATE_DTTM,
+          dictator_id AS DICTATOR_ID,
+          dictator_name AS DICTATOR_NAME,
+          dictate_dttm AS DICTATE_DTTM,
+          transcriber_id AS TRANSCRIBER_ID,
+          transcriber_name AS TRANSCRIBER_NAME,
+          transcribe_dttm AS TRANSCRIBE_DTTM,
+          approver_id AS APPROVER_ID,
+          approver_name AS APPROVER_NAME,
+          approve_dttm AS APPROVE_DTTM,
+          reviser_id AS REVISER_ID,
+          reviser_name AS REVISER_NAME,
+          revise_dttm AS REVISE_DTTM,
+          report_type AS REPORT_TYPE,
+          report_text AS REPORT_TEXT,
+          conclusion AS CONCLUSION
+        FROM reportWl
+        WHERE replica_dttm = 'ANY'
+        ORDER BY trigger_dttm
+      ]]>
+    </sql>
+
+    <sql id="[Inbound][ODBC] Put Report With Filter" type="set">
+      <![CDATA[
+        DECLARE
+            v_report_key                    NUMBER;
+            v_put_report_type               VARCHAR2(32)   := '';
+            v_IsFirstReport                 VARCHAR2(32)   := '';
+
+            v_broker_aetitle                VARCHAR2(32)   := '';
+            v_flow_type                     NUMBER         := 0;
+            v_patient_id                    VARCHAR2(64)   := @PATIENT_ID;
+            v_exam_id                       VARCHAR2(32)   := @EXAM_ID;
+            v_study_instance_uid            VARCHAR2(64)   := @STUDY_INSTANCE_UID;
+            v_report_stat                   VARCHAR2(4)    := @REPORT_STAT;
+            v_creator_id                    VARCHAR2(32)   := @CREATOR_ID;
+            v_creator_name                  VARCHAR2(64)   := @CREATOR_NAME;
+            v_create_dttm                   VARCHAR2(14)   := @CREATE_DTTM;
+            v_dictator_id                   VARCHAR2(32)   := @DICTATOR_ID; -- 10
+            v_dictator_name                 VARCHAR2(64)   := @DICTATOR_NAME;
+            v_dictate_dttm                  VARCHAR2(14)   := @DICTATE_DTTM;
+            v_transcriber_id                VARCHAR2(32)   := @TRANSCRIBER_ID;
+            v_transcriber_name              VARCHAR2(64)   := @TRANSCRIBER_NAME;
+            v_transcribe_dttm               VARCHAR2(14)   := @TRANSCRIBE_DTTM;
+            v_approver_id                   VARCHAR2(32)   := @APPROVER_ID;
+            v_approver_name                 VARCHAR2(64)   := @APPROVER_NAME;
+            v_approve_dttm                  VARCHAR2(14)   := @APPROVE_DTTM;
+            v_reviser_id                    VARCHAR2(32)   := @REVISER_ID;
+            v_reviser_name                  VARCHAR2(64)   := @REVISER_NAME; -- 20
+            v_revise_dttm                   VARCHAR2(14)   := @REVISE_DTTM;
+            v_report_type                   VARCHAR2(32)   := @REPORT_TYPE;
+            v_report_text                   LONG           := @REPORT_TEXT; -- limit size : 32768
+            v_conclusion                    VARCHAR2(1024) := @CONCLUSION;
+            v_study_dttm                    VARCHAR2(14)   := '';
+            v_scheduled_location            VARCHAR2(32)   := '';
+            v_perform_department            VARCHAR2(32)   := '';
+            v_perform_modality              VARCHAR2(8)    := '';
+            v_request_dttm                  VARCHAR2(14)   := '';
+            v_request_name                  VARCHAR2(128)  := ''; -- 30
+            v_request_code                  VARCHAR2(32)   := '';
+            v_request_doctor                VARCHAR2(64)   := '';
+            v_perform_doctor                VARCHAR2(64)   := '';
+            v_refer_doctor                  VARCHAR2(64)   := '';
+            v_scheduled_dttm                VARCHAR2(14)   := '';
+            v_patient_name                  VARCHAR2(64)   := '';
+            v_patient_sex                   CHAR(1)        := '';
+            v_patient_birth_dttm            VARCHAR2(8)    := '';
+            v_admission_id                  VARCHAR2(32)   := '';
+            v_study_comments                VARCHAR2(4000) := ''; -- 40
+            v_study_reason                  VARCHAR2(512)  := '';
+            v_attend_doctor                 VARCHAR2(64)   := '';
+            v_patient_location              VARCHAR2(32)   := '';
+            v_scheduled_station             VARCHAR2(32)   := '';
+            v_r_strFxCode                   VARCHAR2(32)   := '';
+            v_r_strFxDesc                   VARCHAR2(1024) := '';
+            v_r_strDxCode                   VARCHAR2(32)   := '';
+            v_r_strDxDesc                   VARCHAR2(1024) := '';
+            v_digital_sign_flag             CHAR(1)        := '';
+            v_digital_sign_data             CLOB           := ''; -- 50
+            v_digital_sign_dttm             VARCHAR2(14)   := '';
+            v_certificate_dn                VARCHAR2(256)  := '';
+            v_digital_sign_key              VARCHAR2(256)  := ''; -- 53
+            
+            v_r_event_type                  VARCHAR2(64);
+            v_r_report_control_id           VARCHAR2(32);
+            v_r_broker_type                 VARCHAR2(32);         -- 56
+
+        BEGIN
+
+            SP_FILTER.report_to_report(
+                    v_broker_aetitle,
+                    v_flow_type,
+                    v_patient_id,
+                    v_exam_id,
+                    v_study_instance_uid,
+                    v_report_stat,
+                    v_creator_id,
+                    v_creator_name,
+                    v_create_dttm,
+                    v_dictator_id,          -- 10
+                    v_dictator_name,
+                    v_dictate_dttm,
+                    v_transcriber_id,
+                    v_transcriber_name,
+                    v_transcribe_dttm,
+                    v_approver_id,
+                    v_approver_name,
+                    v_approve_dttm,
+                    v_reviser_id,
+                    v_reviser_name,         -- 20
+                    v_revise_dttm,
+                    v_report_type,
+                    v_report_text,
+                    v_conclusion,
+                    v_study_dttm,
+                    v_scheduled_location,
+                    v_perform_department,
+                    v_perform_modality,
+                    v_request_dttm,
+                    v_request_name,         -- 30
+                    v_request_code,
+                    v_request_doctor,
+                    v_perform_doctor,
+                    v_refer_doctor,
+                    v_scheduled_dttm,
+                    v_patient_name,
+                    v_patient_sex,
+                    v_patient_birth_dttm,
+                    v_admission_id,
+                    v_study_comments,       -- 40
+                    v_study_reason,
+                    v_attend_doctor,
+                    v_patient_location,
+                    v_scheduled_station,
+                    v_r_strFxCode,
+                    v_r_strFxDesc,
+                    v_r_strDxCode,
+                    v_r_strDxDesc,
+                    v_digital_sign_flag,
+                    v_digital_sign_data,    -- 50
+                    v_digital_sign_dttm,
+                    v_certificate_dn,
+                    v_digital_sign_key,     -- 53
+                    
+                    v_r_event_type,
+                    v_r_report_control_id,
+                    v_r_broker_type         -- 56
+                );
+            
+            v_report_key := SP_MAPPER.put_report(
+                    v_r_event_type,         -- v_event_type
+                    v_r_report_control_id , -- v_report_control_id
+                    v_exam_id             , -- v_accession_no
+                    v_patient_id          , 
+                    v_report_stat         ,
+                    v_creator_id          ,
+                    v_creator_name        , 
+                    v_create_dttm         , 
+                    v_dictator_id         , 
+                    v_dictator_name       , -- 10
+                    v_dictate_dttm        , 
+                    v_transcriber_id      , 
+                    v_transcriber_name    , 
+                    v_transcribe_dttm     ,
+                    v_approver_id         , 
+                    v_approver_name       ,
+                    v_approve_dttm        ,
+                    v_reviser_id          ,
+                    v_reviser_name        ,
+                    v_revise_dttm         , -- 20
+                    v_report_type         , 
+                    v_report_text         , 
+                    v_conclusion          , 
+                    v_r_broker_type       , -- v_broker_type
+                    v_put_report_type     , 
+                    v_IsFirstReport         -- 26
+                );
+        END;
+      ]]>
+    </sql>
+
+    <sql id="[Post-Process][ODBC] Update Report Getter" type="set">
+      <![CDATA[
+        UPDATE reportwl SET replica_dttm = SYSDATE WHERE reportwl_key = #REPORTWL_KEY
+      ]]>
+    </sql>
+
+    <sql id="[Inbound][ODBC] User Getter" type="get">
+      <![CDATA[
+        SELECT  
+          user_key AS USER_KEY,
+          SUBSTR(user_id, 1, 16) AS USER_ID,
+          SUBSTR(user_name, 1, 64) AS USER_NAME,
+          SUBSTR(password, 1, 128) AS PASSWORD,
+          SUBSTR(user_level, 1, 16) AS USER_LEVEL,
+          SUBSTR(user_status, 1, 16) AS USER_STATUS,
+          comments AS COMMENTS
+        FROM userWl
+        WHERE replica_dttm = 'ANY'
+        ORDER BY trigger_dttm
+      ]]>
+    </sql>
+
+    <sql id="[Inbound][ODBC] Put User With Filter" type="set">
+      <![CDATA[
+        DECLARE
+            v_user_key                      NUMBER;
+
+            v_broker_aetitle                VARCHAR2(32)   := '';
+            v_user_id                       VARCHAR2(64)   := @USER_ID;
+            v_user_name                     VARCHAR2(64)   := @USER_NAME;
+            v_password                      VARCHAR2(128)  := @PASSWORD;
+            v_user_level                    VARCHAR2(16)   := @USER_LEVEL;
+            v_user_status                   VARCHAR2(16)   := @USER_STATUS;
+            v_comments                      VARCHAR2(2000) := @COMMENTS;
+
+        BEGIN
+
+            SP_FILTER.user_to_user(
+                    v_broker_aetitle,
+                    v_user_id,
+                    v_user_name,
+                    v_password,
+                    v_user_level,
+                    v_user_status,
+                    v_comments
+                );
+            
+            v_user_key := SP_MAPPER.put_user(
+                    v_user_id,
+                    v_user_name,
+                    v_password, 
+                    v_user_level,
+                    v_user_status,
+                    v_comments
+                );
+        END;
+      ]]>
+    </sql>
+
+    <sql id="[Post-Process][ODBC] Update User Getter" type="set">
+      <![CDATA[
+        UPDATE userwl SET replica_dttm = SYSDATE WHERE user_key = #USER_KEY
+      ]]>
+    </sql>
+
+    <sql id="[Inbound][ODBC] ORM Getter (Not Substr)" type="get">
+      <![CDATA[
+        SELECT
+          orm_key AS ORM_KEY,
+          event_type AS EVENT_TYPE,
+          message_control_id AS MESSAGE_CONTROL_ID,
+          patient_account_no AS PATIENT_ACCOUNT_NO,
+          patient_id AS PATIENT_ID,
+          patient_name AS PATIENT_NAME,
+          patient_ename AS PATIENT_ENAME,
+          patient_ssn AS PATIENT_SSN,
+          SUBSTR(RTRIM(patient_birth_dttm), 1, 8) AS PATIENT_BIRTH_DTTM,
+          SUBSTR(RTRIM(patient_sex), 1, 3) AS PATIENT_SEX,
+          refering_doctor_id AS REFERING_DOCTOR_ID,
+          refering_doctor_name AS REFERING_DOCTOR_NAME,
+          attending_doctor_id AS ATTENDING_DOCTOR_ID,
+          attending_doctor_name AS ATTENDING_DOCTOR_NAME,
+          prior_patient_location AS PRIOR_PATIENT_LOCATION,
+          consulting_doctor_id AS CONSULTING_DOCTOR_ID,
+          consulting_doctor_name AS CONSULTING_DOCTOR_NAME,
+          patient_class AS PATIENT_CLASS, 
+          SUBSTR(scheduled_date_time, 1, 14) AS SCHEDULED_DATE_TIME,
+          filler_order_no AS FILLER_ORDER_NO,
+          quantity_timing AS QUANTITY_TIMING,
+          order_control_id AS ORDER_CONTROL_ID,
+          universal_service_id AS UNIVERSAL_SERVICE_ID,
+          specimen_source AS SPECIMEN_SOURCE,
+          diagnostic_serv_sect_id AS DIAGNOSTIC_SERV_SECT_ID,
+          placer_field1 AS PLACER_FIELD1,
+          placer_field2 AS PLACER_FIELD2,
+          filler_field1 AS FILLER_FIELD1,
+          filler_field2 AS FILLER_FIELD2,
+          reason_for_study AS REASON_FOR_STUDY,
+          entering_organization AS ENTERING_ORGANIZATION,
+          reference_pointer AS REFERENCE_POINTER,
+          request_dttm AS REQUEST_DTTM,
+          specialty AS SPECIALTY,
+          diagnosis AS DIAGNOSIS,
+          patient_residency AS PATIENT_RESIDENCY,
+          orm_field1 AS ORM_FIELD1,
+          orm_field2 AS ORM_FIELD2,
+          orm_field3 AS ORM_FIELD3,
+          orm_field4 AS ORM_FIELD4,
+          orm_field5 AS ORM_FIELD5,
+          orm_field6 AS ORM_FIELD6,
+          orm_field7 AS ORM_FIELD7,
+          orm_field8 AS ORM_FIELD8,
+          orm_field9 AS ORM_FIELD9,
+          orm_field10 AS ORM_FIELD10
+        FROM ormQueue
+        WHERE replica_dttm = 'ANY'
+        ORDER BY trigger_dttm
+      ]]>
+    </sql>
+
+    <sql id="[Inbound][ODBC] Put ORM(mwl) With Filter" type="set">
+      <![CDATA[
+        DECLARE
+            v_o_broker_aetitle             VARCHAR2(32)    := '';
+            v_o_message_control_id         VARCHAR2(8)     := @MESSAGE_CONTROL_ID;
+            v_o_event_type                 VARCHAR2(32)    := @EVENT_TYPE;
+            v_o_patient_account_no         VARCHAR2(32)    := @PATIENT_ACCOUNT_NO;
+            v_o_patient_id                 VARCHAR2(64)    := @PATIENT_ID;
+            v_o_patient_name               VARCHAR2(64)    := @PATIENT_NAME;
+            v_o_patient_ename              VARCHAR2(64)    := @PATIENT_ENAME;
+            v_o_patient_ssn                VARCHAR2(32)    := @PATIENT_SSN;
+            v_o_patient_birth_dttm         VARCHAR2(8)     := @PATIENT_BIRTH_DTTM;
+            v_o_patient_sex                CHAR(1)         := @PATIENT_SEX;
+            v_o_refering_doctor_id         VARCHAR2(64)    := @REFERING_DOCTOR_ID;
+            v_o_refering_doctor_name       VARCHAR2(64)    := @REFERING_DOCTOR_NAME;
+            v_o_attending_doctor_id        VARCHAR2(64)    := @ATTENDING_DOCTOR_ID;
+            v_o_attending_doctor_name      VARCHAR2(64)    := @ATTENDING_DOCTOR_NAME;
+            v_o_prior_patient_location     VARCHAR2(32)    := @PRIOR_PATIENT_LOCATION;
+            v_o_consulting_doctor_id       VARCHAR2(64)    := @CONSULTING_DOCTOR_ID;
+            v_o_consulting_doctor_name     VARCHAR2(64)    := @CONSULTING_DOCTOR_NAME;
+            v_o_patient_class              VARCHAR2(32)    := @PATIENT_CLASS;
+            v_o_scheduled_date_time        VARCHAR2(14)    := @SCHEDULED_DATE_TIME;
+            v_o_filler_order_no            VARCHAR2(32)    := @FILLER_ORDER_NO;
+            v_o_quantity_timing            VARCHAR2(32)    := @QUANTITY_TIMING;
+            v_o_order_control_id           VARCHAR2(32)    := @ORDER_CONTROL_ID;
+            v_o_universal_service_id       VARCHAR2(256)   := @UNIVERSAL_SERVICE_ID;
+            v_o_specimen_source            VARCHAR2(32)    := @SPECIMEN_SOURCE;
+            v_o_diagnostic_serv_sect_id    VARCHAR2(32)    := @DIAGNOSTIC_SERV_SECT_ID;
+            v_o_placer_field1              VARCHAR2(32)    := @PLACER_FIELD1;
+            v_o_placer_field2              VARCHAR2(32)    := @PLACER_FIELD2;
+            v_o_filler_field1              VARCHAR2(32)    := @FILLER_FIELD1;
+            v_o_filler_field2              VARCHAR2(32)    := @FILLER_FIELD2;
+            v_o_reason_for_study           VARCHAR2(256)   := @REASON_FOR_STUDY;
+            v_o_entering_organization      VARCHAR2(32)    := @ENTERING_ORGANIZATION;
+            v_o_reference_pointer          VARCHAR2(64)    := @REFERENCE_POINTER;
+            v_o_request_dttm               VARCHAR2(14)    := @REQUEST_DTTM;
+            v_o_specialty                  VARCHAR2(64)    := @SPECIALTY;
+            v_o_diagnosis                  VARCHAR2(2048)  := @DIAGNOSIS;
+            v_o_patient_residency          VARCHAR2(80)    := @PATIENT_RESIDENCY;
+            v_o_orm_field1                 VARCHAR2(128)   := @ORM_FIELD1;
+            v_o_orm_field2                 VARCHAR2(128)   := @ORM_FIELD2;
+            v_o_orm_field3                 VARCHAR2(128)   := @ORM_FIELD3;
+            v_o_orm_field4                 VARCHAR2(128)   := @ORM_FIELD4;
+            v_o_orm_field5                 VARCHAR2(128)   := @ORM_FIELD5;
+            v_o_orm_field6                 VARCHAR2(128)   := @ORM_FIELD6;
+            v_o_orm_field7                 VARCHAR2(128)   := @ORM_FIELD7;
+            v_o_orm_field8                 VARCHAR2(128)   := @ORM_FIELD8;
+            v_o_orm_field9                 VARCHAR2(128)   := @ORM_FIELD9;
+            v_o_orm_field10                VARCHAR2(128)   := @ORM_FIELD10;
+            v_o_zra_field02                VARCHAR2(128)   := '';
+            v_o_ipc_field01                VARCHAR2(128)   := '';
+            v_o_ipc_field02                VARCHAR2(128)   := '';
+            v_o_ipc_field03                VARCHAR2(128)   := '';
+            v_o_ipc_field04                VARCHAR2(128)   := '';
+            v_o_ipc_field05                VARCHAR2(128)   := '';
+            v_o_ipc_field06                VARCHAR2(128)   := '';
+            v_o_ipc_field07                VARCHAR2(128)   := '';
+            v_o_ipc_field08                VARCHAR2(128)   := '';
+            v_o_ipc_field09                VARCHAR2(128)   := '';
+            
+            v_m_order_control_id           VARCHAR2(16);
+            v_m_event_type                 VARCHAR2(32);
+            v_m_character_set              VARCHAR2(32);
+            v_m_scheduled_aetitle          VARCHAR2(16);
+            v_m_scheduled_dttm             VARCHAR2(32);
+            v_m_scheduled_modality         VARCHAR2(8);
+            v_m_scheduled_station          VARCHAR2(32);
+            v_m_scheduled_location         VARCHAR2(32);
+            v_m_scheduled_proc_id          VARCHAR2(32);
+            v_m_scheduled_proc_desc        VARCHAR2(64);
+            v_m_scheduled_action_codes     VARCHAR2(256);
+            v_m_scheduled_proc_status      VARCHAR2(32);
+            v_m_premedication              VARCHAR2(32);
+            v_m_contrast_agent             VARCHAR2(32);
+            v_m_requested_proc_id          VARCHAR2(32);
+            v_m_requested_proc_desc        VARCHAR2(64);
+            v_m_requested_proc_codes       VARCHAR2(256);
+            v_m_requested_proc_priority    VARCHAR2(32);
+            v_m_requested_proc_reason      VARCHAR2(256);
+            v_m_requested_proc_comments    VARCHAR2(4000);
+            v_m_study_instance_uid         VARCHAR2(64);
+            v_m_proc_placer_order_no       VARCHAR2(32);
+            v_m_proc_filler_order_no       VARCHAR2(32);
+            v_m_accession_no               VARCHAR2(32);
+            v_m_attend_doctor              VARCHAR2(32);
+            v_m_perform_doctor             VARCHAR2(32);
+            v_m_consult_doctor             VARCHAR2(32);
+            v_m_request_doctor             VARCHAR2(32);
+            v_m_refer_doctor               VARCHAR2(32);
+            v_m_request_department         VARCHAR2(32);
+            v_m_imaging_request_reason     VARCHAR2(64);
+            v_m_imaging_request_comments   VARCHAR2(4000);
+            v_m_imaging_request_dttm       VARCHAR2(14);
+            v_m_isr_placer_order_no        VARCHAR2(32);
+            v_m_isr_filler_order_no        VARCHAR2(32);
+            v_m_admission_id               VARCHAR2(32);
+            v_m_patient_transport          VARCHAR2(32);
+            v_m_patient_location           VARCHAR2(32);
+            v_m_patient_residency          VARCHAR2(80);
+            v_m_patient_name               VARCHAR2(64);
+            v_m_patient_id                 VARCHAR2(64);
+            v_m_other_patient_name         VARCHAR2(64);
+            v_m_other_patient_id           VARCHAR2(64);
+            v_m_patient_birth_dttm         VARCHAR2(8);
+            v_m_patient_sex                CHAR(1);
+            v_m_patient_weight             VARCHAR2(16);
+            v_m_patient_size               VARCHAR2(16);
+            v_m_patient_state              VARCHAR2(256);
+            v_m_confidentiality            VARCHAR2(256);
+            v_m_pregnancy_status           VARCHAR2(256);
+            v_m_medical_alerts             VARCHAR2(256);
+            v_m_contrast_allergies         VARCHAR2(256);
+            v_m_special_needs              VARCHAR2(32);
+            v_m_specialty                  VARCHAR2(32);
+            v_m_diagnosis                  VARCHAR2(2048);
+            v_m_admit_dttm                 VARCHAR2(32);
+            v_m_register_dttm              VARCHAR2(32);
+            v_m_patient_id_issuer          VARCHAR2(32);
+            v_m_last_name                  VARCHAR2(32);
+            v_m_first_name                 VARCHAR2(32);
+            v_m_middle_name                VARCHAR2(32);
+            v_m_prefix                     VARCHAR2(32);
+            v_m_suffix                     VARCHAR2(32);
+            v_m_race_code                  VARCHAR2(32);
+            v_m_account_no                 VARCHAR2(32);
+            v_m_address                    VARCHAR2(128);
+            v_m_order_entry_user_id        VARCHAR2(64);
+            v_m_order_entry_location       VARCHAR2(512);
+            v_m_order_callback_phone_no    VARCHAR2(512);
+            v_m_req_proc_status            VARCHAR2(8);
+            v_m_req_proc_code_scheme       VARCHAR2(32);
+            v_m_req_proc_code_version      VARCHAR2(32);
+            v_m_req_proc_code_meaning      VARCHAR2(256);
+            v_m_req_proc_location          VARCHAR2(32);
+            v_m_patient_arrange            VARCHAR2(32);
+            v_m_source_aetitle             VARCHAR2(16);
+            v_m_broker_aetitle             VARCHAR2(16);
+            v_m_broker_type                VARCHAR2(16);
+            v_m_study_ssn                  VARCHAR2(64);
+        
+        BEGIN
+        
+            SP_FILTER.orm_to_mwl(
+                    v_o_broker_aetitle,
+                    v_o_message_control_id,
+                    v_o_event_type,
+                    v_o_patient_account_no,
+                    v_o_patient_id,
+                    v_o_patient_name,
+                    v_o_patient_ename,
+                    v_o_patient_ssn,
+                    v_o_patient_birth_dttm,
+                    v_o_patient_sex,
+                    v_o_refering_doctor_id,
+                    v_o_refering_doctor_name,
+                    v_o_attending_doctor_id,
+                    v_o_attending_doctor_name,
+                    v_o_prior_patient_location,
+                    v_o_consulting_doctor_id,
+                    v_o_consulting_doctor_name,
+                    v_o_patient_class,
+                    v_o_scheduled_date_time,
+                    v_o_filler_order_no,
+                    v_o_quantity_timing,
+                    v_o_order_control_id,
+                    v_o_universal_service_id,
+                    v_o_specimen_source,
+                    v_o_diagnostic_serv_sect_id,
+                    v_o_placer_field1,
+                    v_o_placer_field2,
+                    v_o_filler_field1,
+                    v_o_filler_field2,
+                    v_o_reason_for_study,
+                    v_o_entering_organization,
+                    v_o_reference_pointer,
+                    v_o_request_dttm,
+                    v_o_specialty,
+                    v_o_diagnosis,
+                    v_o_patient_residency,
+                    v_o_orm_field1,
+                    v_o_orm_field2,
+                    v_o_orm_field3,
+                    v_o_orm_field4,
+                    v_o_orm_field5,
+                    v_o_orm_field6,
+                    v_o_orm_field7,
+                    v_o_orm_field8,
+                    v_o_orm_field9,
+                    v_o_orm_field10,
+                    v_o_zra_field02,
+                    v_o_ipc_field01,
+                    v_o_ipc_field02,
+                    v_o_ipc_field03,
+                    v_o_ipc_field04,
+                    v_o_ipc_field05,
+                    v_o_ipc_field06,
+                    v_o_ipc_field07,
+                    v_o_ipc_field08,
+                    v_o_ipc_field09,
+                    
+                    v_m_order_control_id,
+                    v_m_event_type,
+                    v_m_character_set,
+                    v_m_scheduled_aetitle,
+                    v_m_scheduled_dttm,
+                    v_m_scheduled_modality,
+                    v_m_scheduled_station,
+                    v_m_scheduled_location,
+                    v_m_scheduled_proc_id,
+                    v_m_scheduled_proc_desc,
+                    v_m_scheduled_action_codes,
+                    v_m_scheduled_proc_status,
+                    v_m_premedication,
+                    v_m_contrast_agent,
+                    v_m_requested_proc_id,
+                    v_m_requested_proc_desc,
+                    v_m_requested_proc_codes,
+                    v_m_requested_proc_priority,
+                    v_m_requested_proc_reason,
+                    v_m_requested_proc_comments,
+                    v_m_study_instance_uid,
+                    v_m_proc_placer_order_no,
+                    v_m_proc_filler_order_no,
+                    v_m_accession_no,
+                    v_m_attend_doctor,
+                    v_m_perform_doctor,
+                    v_m_consult_doctor,
+                    v_m_request_doctor,
+                    v_m_refer_doctor,
+                    v_m_request_department,
+                    v_m_imaging_request_reason,
+                    v_m_imaging_request_comments,
+                    v_m_imaging_request_dttm,
+                    v_m_isr_placer_order_no,
+                    v_m_isr_filler_order_no,
+                    v_m_admission_id,
+                    v_m_patient_transport,
+                    v_m_patient_location,
+                    v_m_patient_residency,
+                    v_m_patient_name,
+                    v_m_patient_id,
+                    v_m_other_patient_name,
+                    v_m_other_patient_id,
+                    v_m_patient_birth_dttm,
+                    v_m_patient_sex,
+                    v_m_patient_weight,
+                    v_m_patient_size,
+                    v_m_patient_state,
+                    v_m_confidentiality,
+                    v_m_pregnancy_status,
+                    v_m_medical_alerts,
+                    v_m_contrast_allergies,
+                    v_m_special_needs,
+                    v_m_specialty,
+                    v_m_diagnosis,
+                    v_m_admit_dttm,
+                    v_m_register_dttm,
+                    v_m_patient_id_issuer,
+                    v_m_last_name,
+                    v_m_first_name,
+                    v_m_middle_name,
+                    v_m_prefix,
+                    v_m_suffix,
+                    v_m_race_code,
+                    v_m_account_no,
+                    v_m_address,
+                    v_m_order_entry_user_id,
+                    v_m_order_entry_location,
+                    v_m_order_callback_phone_no,
+                    v_m_req_proc_status,
+                    v_m_req_proc_code_scheme,
+                    v_m_req_proc_code_version,
+                    v_m_req_proc_code_meaning,
+                    v_m_req_proc_location,
+                    v_m_patient_arrange,
+                    v_m_source_aetitle,
+                    v_m_broker_aetitle,
+                    v_m_broker_type,
+                    v_m_study_ssn
+                );
+            
+            SP_MAPPER.put_mwl(
+                    v_m_order_control_id,
+                    v_m_event_type,
+                    v_m_character_set,
+                    v_m_scheduled_aetitle,
+                    v_m_scheduled_dttm,
+                    v_m_scheduled_modality,
+                    v_m_scheduled_station,
+                    v_m_scheduled_location,
+                    v_m_scheduled_proc_id,
+                    v_m_scheduled_proc_desc,
+                    v_m_scheduled_action_codes,
+                    v_m_scheduled_proc_status,
+                    v_m_premedication,
+                    v_m_contrast_agent,
+                    v_m_requested_proc_id,
+                    v_m_requested_proc_desc,
+                    v_m_requested_proc_codes,
+                    v_m_requested_proc_priority,
+                    v_m_requested_proc_reason,
+                    v_m_requested_proc_comments,
+                    v_m_study_instance_uid,
+                    v_m_proc_placer_order_no,
+                    v_m_proc_filler_order_no,
+                    v_m_accession_no,
+                    v_m_attend_doctor,
+                    v_m_perform_doctor,
+                    v_m_consult_doctor,
+                    v_m_request_doctor,
+                    v_m_refer_doctor,
+                    v_m_request_department,
+                    v_m_imaging_request_reason,
+                    v_m_imaging_request_comments,
+                    v_m_imaging_request_dttm,
+                    v_m_isr_placer_order_no,
+                    v_m_isr_filler_order_no,
+                    v_m_admission_id,
+                    v_m_patient_transport,
+                    v_m_patient_location,
+                    v_m_patient_residency,
+                    v_m_patient_name,
+                    v_m_patient_id,
+                    v_m_other_patient_name,
+                    v_m_other_patient_id,
+                    v_m_patient_birth_dttm,
+                    v_m_patient_sex,
+                    v_m_patient_weight,
+                    v_m_patient_size,
+                    v_m_patient_state,
+                    v_m_confidentiality,
+                    v_m_pregnancy_status,
+                    v_m_medical_alerts,
+                    v_m_contrast_allergies,
+                    v_m_special_needs,
+                    v_m_specialty,
+                    v_m_diagnosis,
+                    v_m_admit_dttm,
+                    v_m_register_dttm,
+                    v_m_study_ssn
+                );
+        END;
+      ]]>
+    </sql>
+	
+    <sql id="[Post-Process][ODBC] Update ORM Getter" type="set">
+      <![CDATA[
+        UPDATE ormqueue SET replica_dttm = SYSDATE WHERE orm_key = #ORM_KEY
+      ]]>
+    </sql>
+
+    <sql id="[Inbound][ODBC] ADT Getter" type="get">
+      <![CDATA[
+        SELECT  
+          SUBSTR(event_type, 1, 32) AS EVENT_TYPE,
+          SUBSTR(patient_account_no, 1, 32) AS PATIENT_ACCOUNT_NO,
+          SUBSTR(patient_id, 1, 32) AS PATIENT_ID,
+          SUBSTR(prior_patient_id, 1, 64) AS PRIOR_PATIENT_ID,
+          SUBSTR(patient_name, 1, 32) AS PATIENT_NAME,
+          SUBSTR(patient_ename, 1, 32) AS ENGLISH_NAME,
+          SUBSTR(patient_ssn, 1, 32) AS PATIENT_SSN,
+          SUBSTR(patient_birth_dttm, 1, 32) AS PATIENT_BIRTH_DTTM,
+          SUBSTR(patient_sex, 1, 32) AS PATIENT_SEX,
+          SUBSTR(patient_weight, 1, 32) AS PATIENT_WEIGHT,
+          SUBSTR(patient_size, 1, 32) AS PATIENT_SIZE,
+          SUBSTR(patient_ethnic_group, 1, 32) AS ETHNIC_GROUP,
+          SUBSTR(patient_phone_no, 1, 32) AS TEL_NO,
+          SUBSTR(patient_fax_no, 1, 32) AS FAX_NO,
+          SUBSTR(patient_zipcode, 1, 32) AS ZIPCODE,
+          SUBSTR(patient_address, 1, 32) AS ADDRESS,
+          SUBSTR(patient_email, 1, 32) AS EMAIL,
+          SUBSTR(patient_blood_type, 1, 32) AS BLOOD_TYPE,
+          SUBSTR(patient_pregnancy_status, 1, 32) AS PREGNANCY_STATUS,
+          SUBSTR(patient_class, 1, 32) AS CURRENT_LOCATION,
+          SUBSTR(patient_location, 1, 32) AS CURRENT_RESIDENCY,
+          SUBSTR(prior_patient_location, 1, 32) AS CURRENT_DEPARTMENT,
+          SUBSTR(current_doctor_id, 1, 32) AS CURRENT_DOCTOR_ID,
+          SUBSTR(current_doctor_name, 1, 32) AS CURRENT_DOCTOR_NAME,
+          null AS ADMIT_DTTM,
+          null AS DISCHARGE_DTTM,
+		  SUBSTR(adt_field1, 1, 128) AS ADT_FIELD1,
+          SUBSTR(adt_field2, 1, 128) AS ADT_FIELD2,
+          SUBSTR(adt_field3, 1, 128) AS ADT_FIELD3,
+          SUBSTR(adt_field4, 1, 128) AS ADT_FIELD4,
+          SUBSTR(adt_field5, 1, 128) AS ADT_FIELD5,
+          SUBSTR(adt_field6, 1, 128) AS ADT_FIELD6,
+          SUBSTR(adt_field7, 1, 128) AS ADT_FIELD7,
+          SUBSTR(adt_field8, 1, 128) AS ADT_FIELD8,
+          SUBSTR(adt_field9, 1, 128) AS ADT_FIELD9,
+          SUBSTR(adt_field10, 1, 128) AS ADT_FIELD10
+        FROM adtQueue
+        WHERE replica_dttm = 'ANY'
+        ORDER BY trigger_dttm
+      ]]>
+    </sql>
+
+    <sql id="[Inbound][ODBC] Put ADT With Filter" type="set">
+      <![CDATA[
+        DECLARE
+            v_patient_key                   NUMBER;
+
+            v_a_broker_aetitle              VARCHAR2(32)   := '';
+            v_a_event_type                  VARCHAR2(14)   := @EVENT_TYPE;
+            v_a_patient_account_no          VARCHAR2(32)   := @PATIENT_ACCOUNT_NO;
+            v_a_patient_id                  VARCHAR2(32)   := @PATIENT_ID;
+            v_a_patient_name                VARCHAR2(32)   := @PATIENT_NAME;
+            v_a_patient_ename               VARCHAR2(32)   := @PATIENT_ENAME;
+            v_a_patient_ssn                 VARCHAR2(32)   := @PATIENT_SSN;
+            v_a_patient_birth_dttm          VARCHAR2(32)   := @PATIENT_BIRTH_DTTM;
+            v_a_patient_sex                 VARCHAR2(32)   := @PATIENT_SEX;
+            v_a_patient_ethnic_group        VARCHAR2(32)   := @ETHNIC_GROUP;
+            v_a_patient_phone_no            VARCHAR2(32)   := @TEL_NO;
+            v_a_patient_email               VARCHAR2(32)   := @EMAIL;
+            v_a_patient_address             VARCHAR2(32)   := @ADDRESS;
+            v_a_patient_fax_no              VARCHAR2(32)   := @FAX_NO;
+            v_a_patient_zipcode             VARCHAR2(32)   := @ZIPCODE;
+            v_a_patient_class               VARCHAR2(32)   := @CURRENT_LOCATION;
+            v_a_patient_location            VARCHAR2(32)   := @CURRENT_RESIDENCY;
+            v_a_current_doctor_id           VARCHAR2(32)   := @CURRENT_DOCTOR_ID;
+            v_a_current_doctor_name         VARCHAR2(32)   := @CURRENT_DOCTOR_NAME;
+            v_a_prior_patient_location      VARCHAR2(32)   := @CURRENT_DEPARTMENT;
+            v_a_prior_patient_id            VARCHAR2(32)   := @PRIOR_PATIENT_ID;
+            v_a_patient_weight              VARCHAR2(32)   := @PATIENT_WEIGHT;
+            v_a_patient_size                VARCHAR2(32)   := @PATIENT_SIZE;
+            v_a_patient_blood_type          VARCHAR2(32)   := @BLOOD_TYPE;
+            v_a_patient_pregnancy_status    VARCHAR2(32)   := @PREGNANCY_STATUS;
+            v_a_adt_field1                  VARCHAR2(128)  := @ADT_FIELD1;
+            v_a_adt_field2                  VARCHAR2(128)  := @ADT_FIELD2;
+            v_a_adt_field3                  VARCHAR2(128)  := @ADT_FIELD3;
+            v_a_adt_field4                  VARCHAR2(128)  := @ADT_FIELD4;
+            v_a_adt_field5                  VARCHAR2(128)  := @ADT_FIELD5;
+            v_a_adt_field6                  VARCHAR2(128)  := @ADT_FIELD6;
+            v_a_adt_field7                  VARCHAR2(128)  := @ADT_FIELD7;
+            v_a_adt_field8                  VARCHAR2(128)  := @ADT_FIELD8;
+            v_a_adt_field9                  VARCHAR2(128)  := @ADT_FIELD9;
+            v_a_adt_field10                 VARCHAR2(128)  := @ADT_FIELD10;
+
+            v_p_event_type                  VARCHAR2(32);
+            v_p_patient_id                  VARCHAR2(64);
+            v_p_prior_patient_id            VARCHAR2(64);
+            v_p_patient_name                VARCHAR2(64);
+            v_p_english_name                VARCHAR2(32);
+            v_p_patient_ssn                 VARCHAR2(32);
+            v_p_patient_birth_dttm          VARCHAR2(8);
+            v_p_patient_sex                 VARCHAR2(8);
+            v_p_patient_weight              VARCHAR2(8);
+            v_p_patient_size                VARCHAR2(8);
+            v_p_ethnic_group                VARCHAR2(32);
+            v_p_tel_no                      VARCHAR2(32);
+            v_p_fax_no                      VARCHAR2(32);
+            v_p_zipcode                     VARCHAR2(16);
+            v_p_address                     VARCHAR2(128);
+            v_p_email                       VARCHAR2(64);
+            v_p_blood_type                  VARCHAR2(8);
+            v_p_pregnancy_status            VARCHAR2(8);
+            v_p_current_location            VARCHAR2(32);
+            v_p_current_residency           VARCHAR2(32);
+            v_p_current_department          VARCHAR2(32);
+            v_p_current_doctor_id           VARCHAR2(32);
+            v_p_current_doctor_name         VARCHAR2(64);
+            v_p_admit_dttm                  VARCHAR2(14);
+            v_p_discharge_dttm              VARCHAR2(14);
+            v_p_patient_id_issuer           VARCHAR2(32);
+            v_p_last_name                   VARCHAR2(32);
+            v_p_first_name                  VARCHAR2(32);
+            v_p_middle_name                 VARCHAR2(32);
+            v_p_prefix                      VARCHAR2(32);
+            v_p_suffix                      VARCHAR2(32);
+            v_p_marital_status              VARCHAR2(32);
+            v_p_confidentiality             CHAR(1);
+            v_p_patient_death_dttm          VARCHAR2(8);
+            v_p_blood_type_rh               CHAR(1);
+            v_p_citizenship                 VARCHAR2(32);
+            v_p_occupation                  VARCHAR2(32);
+            v_p_race_code                   VARCHAR2(32);
+            v_p_language_code               VARCHAR2(32);
+            v_p_religion_code               VARCHAR2(32);
+            v_p_birth_place                 VARCHAR2(32);
+            v_p_multiple_birth_status       VARCHAR2(32);
+            v_p_birth_order                 VARCHAR2(32);
+            v_p_cell_phone_no               VARCHAR2(40);
+            v_p_pregnancy_code              VARCHAR2(32);
+            v_p_patient_status              CHAR(1);
+            v_p_account_number              VARCHAR2(32);
+            v_p_contact_type                CHAR(3);
+            v_p_business_phone_no           VARCHAR2(40);
+            v_p_city                        VARCHAR2(32);
+            v_p_state                       VARCHAR2(32);
+            v_p_country                     VARCHAR2(64);
+            v_p_visit_number                VARCHAR2(32);
+            v_p_visit_status                CHAR(1);
+            v_p_consult_doctor_id           VARCHAR2(64);
+            v_p_institution_code            VARCHAR2(32);
+            v_p_visit_comments              VARCHAR2(4000);
+            v_p_admit_route                 VARCHAR2(1);
+            v_p_last_menstrual_dttm         VARCHAR2(14);
+            v_p_code_abbreviation           VARCHAR2(32);
+            v_p_station_code                VARCHAR2(32);
+            v_p_consult_doctor_name         VARCHAR2(64);
+            v_p_broker_aetitle              VARCHAR2(32);
+            v_p_broker_type                 VARCHAR2(16);
+        
+        BEGIN
+        
+            SP_FILTER.adt_to_patient(
+                    v_a_broker_aetitle,
+                    v_a_event_type,
+                    v_a_patient_account_no,
+                    v_a_patient_id,
+                    v_a_patient_name,
+                    v_a_patient_ename,
+                    v_a_patient_ssn,
+                    v_a_patient_birth_dttm,
+                    v_a_patient_sex,
+                    v_a_patient_ethnic_group,
+                    v_a_patient_phone_no,
+                    v_a_patient_email,
+                    v_a_patient_address,
+                    v_a_patient_fax_no,
+                    v_a_patient_zipcode,
+                    v_a_patient_class,
+                    v_a_patient_location,
+                    v_a_current_doctor_id,
+                    v_a_current_doctor_name,
+                    v_a_prior_patient_location,
+                    v_a_prior_patient_id,
+                    v_a_patient_weight,
+                    v_a_patient_size,
+                    v_a_patient_blood_type,
+                    v_a_patient_pregnancy_status,
+                    v_a_adt_field1,
+                    v_a_adt_field2,
+                    v_a_adt_field3,
+                    v_a_adt_field4,
+                    v_a_adt_field5,
+                    v_a_adt_field6,
+                    v_a_adt_field7,
+                    v_a_adt_field8,
+                    v_a_adt_field9,
+                    v_a_adt_field10,
+
+                    v_p_event_type,
+                    v_p_patient_id,
+                    v_p_prior_patient_id,
+                    v_p_patient_name,
+                    v_p_english_name,
+                    v_p_patient_ssn,
+                    v_p_patient_birth_dttm,
+                    v_p_patient_sex,
+                    v_p_patient_weight,
+                    v_p_patient_size,
+                    v_p_ethnic_group,
+                    v_p_tel_no,
+                    v_p_fax_no,
+                    v_p_zipcode,
+                    v_p_address,
+                    v_p_email,
+                    v_p_blood_type,
+                    v_p_pregnancy_status,
+                    v_p_current_location,
+                    v_p_current_residency,
+                    v_p_current_department,
+                    v_p_current_doctor_id,
+                    v_p_current_doctor_name,
+                    v_p_admit_dttm,
+                    v_p_discharge_dttm,
+                    v_p_patient_id_issuer,
+                    v_p_last_name,
+                    v_p_first_name,
+                    v_p_middle_name,
+                    v_p_prefix,
+                    v_p_suffix,
+                    v_p_marital_status,
+                    v_p_confidentiality,
+                    v_p_patient_death_dttm,
+                    v_p_blood_type_rh,
+                    v_p_citizenship,
+                    v_p_occupation,
+                    v_p_race_code,
+                    v_p_language_code,
+                    v_p_religion_code,
+                    v_p_birth_place,
+                    v_p_multiple_birth_status,
+                    v_p_birth_order,
+                    v_p_cell_phone_no,
+                    v_p_pregnancy_code,
+                    v_p_patient_status,
+                    v_p_account_number,
+                    v_p_contact_type,
+                    v_p_business_phone_no,
+                    v_p_city,
+                    v_p_state,
+                    v_p_country,
+                    v_p_visit_number,
+                    v_p_visit_status,
+                    v_p_consult_doctor_id,
+                    v_p_institution_code,
+                    v_p_visit_comments,
+                    v_p_admit_route,
+                    v_p_last_menstrual_dttm,
+                    v_p_code_abbreviation,
+                    v_p_station_code,
+                    v_p_consult_doctor_name,
+                    v_p_broker_aetitle,
+                    v_p_broker_type
+                );
+            
+            v_patient_key := SP_MAPPER.put_patient(
+                    v_p_event_type,
+                    v_p_patient_id,
+                    v_p_prior_patient_id,
+                    v_p_patient_id_issuer,
+                    v_p_patient_ssn,
+                    v_p_patient_name,
+                    v_p_last_name,
+                    v_p_first_name,
+                    v_p_middle_name,
+                    v_p_prefix,
+                    v_p_suffix,
+                    v_p_marital_status,
+                    v_p_confidentiality,
+                    v_p_patient_birth_dttm,
+                    v_p_patient_death_dttm,
+                    v_p_patient_sex,
+                    v_p_patient_size,
+                    v_p_patient_weight,
+                    v_p_blood_type,
+                    v_p_blood_type_rh,
+                    v_p_citizenship,
+                    v_p_occupation,
+                    v_p_race_code,
+                    v_p_language_code,
+                    v_p_religion_code,
+                    v_p_birth_place,
+                    v_p_multiple_birth_status,
+                    v_p_birth_order,
+                    v_p_email,
+                    v_p_cell_phone_no,
+                    v_p_pregnancy_code,
+                    v_p_patient_status,
+                    v_p_account_number,
+                    v_p_contact_type,
+                    v_p_tel_no,
+                    v_p_business_phone_no,
+                    v_p_fax_no,
+                    v_p_address,
+                    v_p_city,
+                    v_p_state,
+                    v_p_country,
+                    v_p_zipcode,
+                    v_p_visit_number,
+                    v_p_visit_status,
+                    v_p_admit_dttm,
+                    v_p_discharge_dttm,
+                    v_p_current_location,
+                    v_p_current_residency,
+                    v_p_current_doctor_id,
+                    v_p_consult_doctor_id,
+                    v_p_institution_code,
+                    v_p_visit_comments,
+                    v_p_admit_route,
+                    v_p_last_menstrual_dttm,
+                    v_p_pregnancy_status,
+                    v_p_code_abbreviation,
+                    v_p_station_code,
+                    v_p_english_name,
+                    v_p_ethnic_group,
+                    v_p_current_department,
+                    v_p_current_doctor_name,
+                    v_p_consult_doctor_name,
+                    v_p_broker_aetitle,
+                    v_p_broker_type
+                );
+        END;
+      ]]>
+    </sql>
+
+    <sql id="[Post-Process][ODBC] Update ADT Getter" type="set">
+      <![CDATA[
+        UPDATE adtqueue SET replica_dttm = SYSDATE WHERE adt_key = #ADT_KEY
+      ]]>
+    </sql>
+
+    <sql id="[Outbound][ODBC] Study Getter - Match" type="get">
+      <![CDATA[
+        SELECT
+          q.routeitem_key AS ROUTEITEM_KEY,
+          q.match_stat AS MATCH_STAT,
+          p.patient_id AS PATIENT_ID,
+          s.study_key AS STUDY_KEY,
+          s.access_no AS ACCESS_NO,
+          s.study_stat AS STUDY_STAT,
+          s.study_instance_uid AS STUDY_INSTANCE_UID,
+          to_char(s.study_dttm, 'YYYYMMDDHH24MISS') AS STUDY_DTTM,
+          s.request_code AS REQUEST_CODE,
+          s.request_name AS REQUEST_NAME,
+          s.modalities AS MODALITIES,
+          s.department AS DEPARTMENT,
+          st.station_name AS STATION_NAME,
+          s.source_aetitle AS SOURCE_AETITLE,
+          m.sps_location AS SPS_LOCATION,
+          to_char(m.sps_start_dttm, 'YYYYMMDDHH24MISS') AS SPS_START_DTTM,
+          v.patient_location AS PATIENT_LOCATION,
+          to_char(s.request_dttm, 'YYYYMMDDHH24MISS') AS REQUEST_DTTM,
+          s.study_desc AS STUDY_DESC,
+          s.bodyparts AS BODYPARTS,
+          m.sps_stat AS SPS_STAT,
+          m.sps_id AS SPS_ID,
+          m.sps_comments AS SPS_COMMENTS,
+          p.patient_name AS PATIENT_NAME,
+          p.patient_sex AS PATIENT_SEX,
+          v.visit_no AS VISIT_NO,
+          NVL(s.series_count, 0) AS SERIES_COUNT,
+          NVL(s.instance_count, 0) AS INSTANCE_COUNT
+        FROM  study s, msps m, patient p, iOrder i, visit v, station st,
+              (SELECT routeitem_key, object_key, match_stat
+               FROM (SELECT /*+ rule */
+                         i.routeitem_key AS ROUTEITEM_KEY,
+                         i.object_key AS OBJECT_KEY,
+                         CASE
+                             WHEN s.validate_dttm IS NOT NULL AND s.order_key IS NOT NULL AND s.series_count > 0 AND s.instance_count > 0 THEN 'M'
+                             ELSE 'U'
+                             END AS MATCH_STAT
+                     FROM hl7routeItem i, hl7station st, study s, iOrder o
+                     WHERE i.dst_station_key = st.station_key
+                       AND i.route_stat = 'N'
+                       AND i.message_type = 'ORM'
+                       AND i.EVENT_TYPE IN ('CM', 'MP', 'UM', 'SC', 'CA')
+                       AND i.object_key = s.study_key(+)
+                       AND s.order_key = o.order_key(+)
+                     ORDER BY i.trigger_dttm ASC)
+               WHERE rownum < 1000) q
+        WHERE q.match_stat = 'M'
+          AND s.study_key = q.object_key
+          AND m.study_key = s.study_key
+          AND s.patient_id = p.patient_id
+          AND s.order_key = i.order_key
+          AND p.patient_key = i.patient_key
+          AND i.visit_key = v.visit_key(+)
+          AND m.station_key = st.station_key
+          AND s.validate_dttm IS NOT NULL
+      ]]>
+    </sql>
+
+    <sql id="[Outbound][ODBC] Study Getter - UnMatch" type="get">
+      <![CDATA[
+        SELECT
+          p.patient_id AS PATIENT_ID,  
+          i.filler_order_id AS ACCESS_NO, 
+          s.study_key AS STUDY_KEY,
+          s.modalities AS MODALITIES, 
+          s.request_department AS DEPARTMENT, 
+          s.study_instance_uid AS STUDY_INSTANCE_UID,
+          st.station_name AS STATION_NAME, 
+          m.sps_location AS SPS_LOCATION, 
+          to_char(m.sps_start_dttm, 'YYYYMMDDHH24MISS') AS SPS_START_DTTM, 
+          v.patient_location AS PATIENT_LOCATION, 
+          to_char(s.request_dttm, 'YYYYMMDDHH24MISS') AS REQUEST_DTTM, 
+          m.sps_stat AS SPS_STAT, 
+          m.sps_id AS SPS_ID, 
+          m.sps_comments AS SPS_COMMENTS, 
+          p.patient_name AS PATIENT_NAME, 
+          p.patient_sex AS PATIENT_SEX, 
+          v.visit_no AS VISIT_NO
+        FROM  study s, msps m, patient p, iOrder i, visit v, station st,
+              (SELECT routeitem_key, study_instance_uid, match_stat
+               FROM (SELECT /*+ rule */
+                         i.routeitem_key AS ROUTEITEM_KEY,
+                         s.study_instance_uid AS STUDY_INSTANCE_UID,
+                         CASE
+                             WHEN s.validate_dttm IS NOT NULL AND s.order_key IS NOT NULL AND s.series_count > 0 AND s.instance_count > 0 THEN 'M'
+                             ELSE 'U'
+                             END AS MATCH_STAT
+                     FROM hl7routeItem i, hl7station st, study s, iOrder o
+                     WHERE i.dst_station_key = st.station_key
+                       AND i.route_stat = 'N'
+                       AND i.message_type = 'ORM'
+                       AND i.EVENT_TYPE IN ('CM', 'MP', 'UM', 'SC', 'CA')
+                       AND s.order_key = o.order_key(+)
+                     ORDER BY i.trigger_dttm ASC)
+               WHERE rownum < 1000) q
+        WHERE q.match_stat = 'U'
+          AND s.study_instance_uid = q.study_instance_uid
+          AND m.study_key = s.study_key 
+          AND s.patient_id = p.patient_id 
+          AND s.order_key = i.order_key 
+          AND p.patient_key = i.patient_key 
+          AND i.visit_key = v.visit_key(+) 
+          AND m.station_key = st.station_key
+      ]]>
+    </sql>
+
+    <sql id="[Post-Process] UPDATE Hl7Routeitem - Success" type="set">
+      <![CDATA[
+        UPDATE hl7routeitem
+        SET route_stat = 'Y',
+            replica_dttm = SYSDATE
+        WHERE routeitem_key = @ROUTEITEM_KEY
+		  ]]>
+    </sql>
+
+    <sql id="[Post-Process] UPDATE Hl7Routeitem - Failure" type="set">
+      <![CDATA[
+        UPDATE hl7routeitem
+        SET route_stat = CASE
+                              WHEN NVL(retry_count, 0) >= 2 THEN 'E'
+                              ELSE 'N'
+                          END,
+            retry_count = NVL(retry_count, 0) + 1,
+            replica_dttm = SYSDATE
+        WHERE routeitem_key = @ROUTEITEM_KEY
+		  ]]>
+    </sql>
+
+    <sql id="[Outbound][ODBC] INSERT INTO study_ris" type="set">
+      <![CDATA[
+        BEGIN
+          DELETE FROM study_ris where accession_no = @ACCESS_NO;
+          INSERT INTO study_ris(INPUT_DATE, STUDY_KEY, PATIENT_ID, ACCESSION_NO, STUDY_STAT, STUDY_INSTANCE_UID, STUDY_DTTM, REQUEST_CODE, REQUEST_NAME, PERFORM_MODALITY, PERFORM_STATION, SOURCE_AETITLE, SCHEDULED_LOCATION, PERFORM_DEPARTMENT, SCHEDULED_DTTM, PATIENT_LOCATION, REQUEST_DTTM, ADMISSION_ID, REQUEST_DOCTOR) 
+            VALUES (TOCHAR(SYSDATE, 'yyyymmddhh24miss'), @STUDY_KEY, @PATIENT_ID, @ACCESS_NO, @STUDY_STAT, @STUDY_INSTANCE_UID, @STUDY_DTTM, @REQUEST_CODE, @REQUEST_NAME, @MODALITIES, @STATION_NAME, @SOURCE_AETITLE, @SPS_LOCATION, @DEPARTMENT, @SPS_START_DTTM, @PATIENT_LOCATION, @REQUEST_DTTM, null, null);
+        END;
+      ]]>
+    </sql>
+    
+    <sql id="[Outbound][ODBC] Report Getter" type="get">
+      <![CDATA[
+        SELECT
+          q.routeitem_key AS ROUTEITEM_KEY,
+          q.message_type AS MESSAGE_TYPE,
+          q.event_type AS EVENT_TYPE,
+          q.object_type AS OBJECT_TYPE,
+          q.retry_count AS RETRY_COUNT,
+          r.report_key AS REPORT_KEY,
+          s.patient_id AS PATIENT_ID,
+          s.access_no AS ACCESS_NO,
+          s.study_instance_uid AS STUDY_INSTANCE_UID,
+          s.study_stat AS STUDY_STAT,
+          s.addendum_stat AS ADDENDUM_STAT,
+          c.userid AS CREATE_USERID,
+          c.user_name AS CREATE_USERNAME,
+          to_char(r.create_dttm, 'YYYYMMDDHH24MISS') AS CREATE_DTTM,
+          d.userid AS DICTATE_USERID,
+          d.user_name AS DICTATE_USERNAME,
+          to_char(r.dictate_dttm, 'YYYYMMDDHH24MISS') AS DICTATE_DTTM,
+          t.userid AS TRANSCRIBE_USERID,
+          t.user_name AS TRANCRIBE_USERNAME,
+          to_char(r.transcribe_dttm,'YYYYMMDDHH24MISS') AS TRANSCRIBE_DTTM,
+          a.userid AS APPROVE_USERID,
+          a.user_name AS APPROVE_USERNAME,
+          to_char(r.approval_dttm,'YYYYMMDDHH24MISS') AS APPROVE_DTTM,
+          v.userid AS REVISE_USERID,
+          v.user_name AS REVISE_USERNAME,
+          to_char(r.revision_dttm, 'YYYYMMDDHH24MISS') AS REVISE_DTTM,
+          r.report_type AS REPORT_TYPE,
+          NVL(DBMS_LOB.GETLENGTH(r.report_text_lob), 0) AS REPORT_TEXT,
+          r.conclusion AS CONCLUSION,
+          to_char(s.study_dttm, 'YYYYMMDDHH24MISS') AS STUDY_DTTM,
+          s.institution AS INSTITUTION,
+          s.department AS DEPARTMENT,
+          s.modalities AS MODALITIES,
+          to_char(s.request_dttm, 'YYYYMMDDHH24MISS') AS REQUEST_DTTM,
+          s.request_name AS REQUEST_NAME,
+          s.request_code AS REQUEST_CODE,
+          s.request_doctor AS REQUEST_DOCTOR,
+          s.perform_doctor AS PERFORM_DOCTOR,
+          s.refer_doctor AS REFER_DOCTOR,
+          to_char(m.sps_start_dttm, 'YYYYMMDDHH24MISS') AS SPS_START_DTTM,
+          s.patient_name AS PATIENT_NAME,
+          s.patient_sex AS PATIENT_SEX,
+          to_char(s.patient_birth_dttm, 'YYYYMMDD') AS PATIENT_BIRTH_DTTM,
+          s.study_id AS SPS_ID,
+          s.study_comments AS STUDY_COMMENTS,
+          s.study_reason AS STUDY_REASON,
+          s.operators AS OPERATORS,
+          s.patient_location AS PATIENT_LOCATION,
+          s.source_aetitle AS AETITLE,
+          r.alink_key AS ALINK_KEY,
+          m.sps_location AS SPS_LOCATION
+          -- r.digital_sign_flag AS DIGITAL_SIGN_FLAG,
+          -- r.digital_sign_data AS DIGITAL_SIGN_DATA,
+          -- r.digital_sign_dttm AS DIGITAL_SIGN_DTTM,
+          -- r.certificate_dn AS CERTIFICATE_DN,
+          -- r.digital_sign_key AS DIGITAL_SIGN_KEY
+      FROM report r, study s, users c, users d, users t, users a, users v, msps m,
+           (SELECT routeitem_key, message_type, object_key, event_type, object_type, retry_count
+            FROM (SELECT routeitem_key, message_type, event_type, object_type, object_key, NVL(retry_count, 0) AS RETRY_COUNT
+                  FROM hl7routeItem
+                  WHERE message_type = 'ORU'
+                    AND route_stat = 'N'
+                    AND object_type in ('R', 'A')
+                    AND NVL(retry_count, 0) <= 2
+                  ORDER BY routeitem_key ASC)
+            WHERE rownum < 1000) q
+      WHERE r.report_key IN q.object_key
+        AND s.study_key = r.study_key
+        AND r.study_key = m.study_key
+        AND s.study_stat > 200
+        AND r.creator_key = c.user_key(+)
+        AND r.dictator_key = d.user_key(+)
+        AND r.transcriber_key = t.user_key(+)
+        AND r.approver_key = a.user_key(+)
+        AND r.reviser_key = v.user_key(+)
+      ]]>
+    </sql>
+
+    <sql id="[Outbound][ODBC] INSERT INTO report_ris" type="set">
+      <![CDATA[
+        DECLARE
+            v_report_type varchar2(10) := @OBJECT_TYPE;
+            v_report_stat varchar2(10);
+        BEGIN
+            DELETE FROM report_ris WHERE accession_no = @ACCESS_NO;
+
+            IF v_report_type = 'R' THEN
+                v_report_stat := @STUDY_STAT;
+            ELSE
+                v_report_stat := @ADDENDUM_STAT;
+            END IF;
+            
+            v_report_stat := NVL(v_report_stat, 'F');
+    
+            INSERT INTO report_ris (patient_id, accession_no, study_instance_uid, report_stat, creator_id, creator_name, create_dttm, dictator_id, dictator_name, dictate_dttm, transcriber_id, transcriber_name, transcribe_dttm, approver_id, approver_name, approve_dttm, reviser_id, reviser_name, revise_dttm, report_type, report_text, conclusion, study_dttm, scheduled_location, perform_department, perform_modality, request_dttm, request_name, request_code, request_doctor, perform_doctor, refer_doctor, scheduled_dttm, patient_name, patient_sex, patient_birth_dttm, admission_id, study_comments, study_reason, attend_doctor)
+                VALUES (@PATIENT_ID, @ACCESS_NO, @STUDY_INSTANCE_UID, v_report_stat, @CREATE_USERID, @CREATE_USERNAME, @CREATE_DTTM, @DICTATE_USERID, @DICTATE_USERNAME, @DICTATE_DTTM, @TRANSCRIBE_USERID, @TRANCRIBE_USERNAME, @TRANSCRIBE_DTTM, @APPROVE_USERID, @APPROVE_USERNAME, @APPROVE_DTTM, @REVISE_USERID, @REVISE_USERNAME, @REVISE_DTTM, @REPORT_TYPE, @REPORT_TEXT, @CONCLUSION, @STUDY_DTTM, @INSTITUTION, @DEPARTMENT, @MODALITIES, @REQUEST_DTTM, @REQUEST_NAME, @REQUEST_CODE, @REQUEST_DOCTOR, @PERFORM_DOCTOR, @REFER_DOCTOR, @SPS_START_DTTM, @PATIENT_NAME, @PATIENT_SEX, @PATIENT_BIRTH_DTTM, @SPS_ID, @STUDY_COMMENTS, @STUDY_REASON, @OPERATORS);
+        END;
+      ]]>
+    </sql>
+    
+  </package>
+
+  <package id="Oracle Client">
+
+    <sql id="EXAMPLE" type="get">
+      <![CDATA[
+        SELECT 1 AS ONE
+				FROM	DUAL
+		  ]]>
+    </sql>
+
+  </package>
+
+  <package id="ODBC">
+
+    <sql id="EXAMPLE" type="get">
+      <![CDATA[
+        SELECT 1 AS ONE
+				FROM	DUAL
+		  ]]>
+    </sql>
+
+  </package>
+  
+  <!-- ============================================================================================================== -->
+  <!--                                    DO NOT EDIT THE PACKAGE BELOW                                               -->
+  <!--                       THE PACKAGE BELOW IS USED AS A FIXED VALUE IN THE IntelliLink                            -->
+  <!-- ============================================================================================================== -->
+
+  <package id="DO_NOT_EDIT">
+
+    <!--                            BEGIN : IHP                              -->
+
+    <sql id="SELECT_ID_CODE" type="get">
+      <![CDATA[
+        SELECT se.svc_cd AS SVC_CD,
+                se.inu_cd AS INU_CD,
+                i.inu_nm AS INU_NM,
+                se.faclt_cd AS FACLT_CD,
+                f.faclt_nm AS FACLT_NM,
+                se.sys_cd AS SYS_CD,
+                sy.sys_nm AS SYS_NM
+        FROM instMst i, facilityMst f, sysMst sy, service se
+        WHERE se.inu_cd = i.inu_cd
+          AND se.faclt_cd = f.faclt_cd
+          AND se.sys_cd = sy.sys_cd
+          AND se.act_stat = 'V'
+          AND se.faclt_cd = sy.faclt_cd
+        ORDER BY se.svc_cd ASC
+      ]]>
+    </sql>
+
+    <!--                   BEGIN : Content Uploader Sender                   -->
+
+    <!-- Content Mode 1 -->
+    <sql id="GET_CONTENTCATG" type="get">
+      <![CDATA[
+        SELECT cntt_catg_key, cntt_catg_nm
+        FROM	 contentCatg
+        WHERE	 inu_cd = @INSTITUTION_CODE
+        AND		 faclt_cd = @FACILITY_CODE
+        AND		 use_yn = 'Y'
+      ]]>
+    </sql>
+
+    <!-- Content Mode 2 -->
+    <sql id="GET_CONTENTTYPE" type="get">
+      <![CDATA[
+        SELECT  cntt_catg_typ_key, cntt_catg_typ_nm
+        FROM    contentType
+        WHERE   cntt_catg_key = @CNTT_CATG_KEY
+        AND     use_yn = 'Y'
+      ]]>
+    </sql>
+
+    <!-- MIME Type 1 -->
+    <sql id="GET_MIMETYPEGROUP" type="get">
+      <![CDATA[
+        SELECT  mime_typ_grp_key, mime_typ_grp_nm
+        FROM    mimeTypeGroup
+        ORDER BY mime_typ_grp_nm ASC
+      ]]>
+    </sql>
+
+    <!-- MIME Type 2 -->
+    <sql id="GET_MIMETYPE" type="get">
+      <![CDATA[
+        SELECT  mime_typ_key, mime_file_ex, mime_typ, mime_desc
+        FROM    mimeType
+        WHERE   mime_typ_grp_key = @MIME_TYP_GRP_KEY
+        ORDER BY mime_file_ex ASC
+      ]]>
+    </sql>
+
+    <!-- Inter HTTP -->
+    <sql id="GET_CU_INTER_HTTP" type="get">
+      <![CDATA[
+        SELECT  inter_http
+        FROM    stationMst
+        WHERE   svc_cd = @SERVICE_CODE
+        AND     prod_key = (SELECT prod_key FROM productMst WHERE prod_nm = 'CONTENTUPLOADER')
+        AND     use_yn = 'Y'
+        AND     rownum = 1
+      ]]>
+    </sql>
+
+    <!-- Authentication URL -->
+    <sql id="GET_CU_AUTH_URL" type="get">
+      <![CDATA[
+        SELECT  p.pf_val AS PF_VAL
+        FROM 	  sysProfileMst pm, sysProfile p
+        WHERE   pm.pf_key = p.pf_key
+        AND		  pm.pf_sec = 'SECURITY'
+        AND		  pm.pf_entry = 'AUTHORIZATION_SERVER_HTTP_BASE_URL'
+        AND		  pm.pf_lv = 'IHP'
+      ]]>
+    </sql>
+
+    <!--                      END : Content Uploader Sender                  -->
+
+    <!--                            BEGIN : IHP                              -->
+
+  </package>
+
+</root>

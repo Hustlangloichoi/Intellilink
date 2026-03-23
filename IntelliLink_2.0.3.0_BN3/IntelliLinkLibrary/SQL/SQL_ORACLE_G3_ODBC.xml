@@ -1,0 +1,1087 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+
+<!--
+==============================================================================================================================
+                                                        Manual
+
+  1. 'package id' and 'sql id' can be added, modified, deleted. And IntelliLInk restart is required to be applied.
+
+  2. Mapping name(case sensitive) is  'REPLACER + ColumnName'
+
+    - REPLACER(Binding)
+      $ : CLOB
+      ! : BLOB 
+        - DATA MUST BE ENCODED IN BASE64
+        - e.g.) A FUNCTION that encodes a BLOB column to Base64 and returns it as a CLOB
+
+                FUNCTION blob_to_base64
+                (
+	                p_blob BLOB
+                )
+                RETURN CLOB
+                IS  
+	                v_clob CLOB;
+	                v_step PLS_INTEGER := 12000; // make sure you set a multiple of 3 not higher than 24573
+                BEGIN
+	                FOR i IN 0 .. TRUNC((DBMS_LOB.GETLENGTH(p_blob) - 1 )/v_step) LOOP
+		                v_clob := v_clob || UTL_RAW.CAST_TO_VARCHAR2(UTL_ENCODE.BASE64_ENCODE(DBMS_LOB.substr(p_blob, v_step, i * v_step + 1)));
+	                END LOOP;
+	
+	                RETURN v_clob;
+                END;          
+      % : DATE
+      # : NUMBER
+      @ : VARCHAR2, LONG
+      ^ : XMLTYPE
+
+      =$ : return CLOB
+      =% : return DATE
+      =# : return NUMBER
+      =@ : return VARCHAR2, LONG
+      =^ : return XMLTYPE
+      (=! : 'return BLOB' IS NOT SUPPORT)
+
+    e.g. 1) In the following query statement, the mapping name is '@QUE_ID', '@B.C1' and '@B_C2'
+
+        SELECT
+              Q.key AS QUE_ID,
+              B.C1,
+							B.C2 AS B_C2,
+        FROM  QueTable Q, Test_B B
+        WHERE Q.key = B.key
+        AND   Q.flag = 'N'
+
+    e.g. 2) The above 'mapping name' can be used in other query statements as follows.
+
+        UPDATE QueTable Set flag = 'Y' WHERE key = @QUE_ID
+
+    e.g. 3) Call function with return (MULTIPLE VARIABLES CAN BE DEFINED. REMOVE '=' AND THEN USE IN OTHER SQL_ID)
+
+      <sql id="Sample1">
+        BEGIN
+          =@RETURN_VALUE_VARCHAR2 := function_with_return_varchar2(@MESSAGE);
+		      =$RETURN_VALUE_CLOB := function_with_return_clob(@MESSAGE);
+        END;
+      </sql>
+	  
+      <sql id="Sample2">
+        BEGIN
+          ProcedureOrFunction(@RETURN_VALUE_VARCHAR2);
+		      ProcedureOrFunction($RETURN_VALUE_CLOB);
+        END;
+      </sql>
+	  
+
+  3. All replacer will be binding
+
+  4. Start with SELECT, UPDATE, INSERT, DELETE statement can be called without ';' at the end of the sentence
+
+  5. Call Procedure
+    A. CALL test.Procdure1(@A) // Do not add ';' at the end of the sentence
+    B. DECLARE BEGIN ~ END; // Use DECLARE statement
+    C. EXEC Procedure1 @A, @B ; // If ODBC is MSSQL(SQL Server). (';' can be omitted)
+
+  6. Function
+    - Modified to procedure and used like No.3
+    - Use DECLARE statement
+
+  7. Workflow can be created using declare statement
+
+  8. If you use 'Id Code' in IHP, IntelliLink have 'Id Code' with mapped like below
+    (Replacer can be changed)
+
+    - @SERVICE_CODE
+    - @INSTITUTION_CODE
+    - @FACILITY_CODE
+    - @SYSTEM_CODE
+
+  9. ODBC driver does not support size over 32kb(32768)
+
+  10. When mapping a number type that includes a decimal point, the data may be converted due to the decimal point symbol setting of the PC.
+    (Region - Additional settings - Numbers - Decimal symbol (Windows key + R , intl.cpl))
+      If you do not want to convert it, we recommend mapping it to a string using the to_char function.
+      
+  11. The 'sql' element's attribute value can be set to type="get|set"
+     - 'get' is used for 'SELECT' statements
+     - 'set' applies to all statements except 'SELECT'.
+==============================================================================================================================
+
+==============================================================================================================================
+                                                        FAQ
+
+  1. Error may occur when using DECLARE statement in Oracle 10g
+     - ORA-06550 PLS-00103 error:encountered the symbol (Oracle 10g does not recognize DECLARE statement)
+      => Function modified to procedure and use 'CALL test.Procedure(@A)'(Do not add ';' at the end of the sentence) statement
+==============================================================================================================================
+-->
+
+<root>
+
+  <package id="Spectra G3 - ODBC">
+    
+    <sql id="[Inbound][ODBC] MWL Getter" type="get">
+      <![CDATA[
+        SELECT 
+          mwl_key AS MWL_KEY,
+          CASE
+              WHEN scheduled_proc_status = '0' THEN 'CA' -- cancel order
+              WHEN scheduled_proc_status IN ('100', '120') THEN 'NW' -- new order (Ordered or Scheduled)
+              END AS ORDER_CONTROL_ID,
+          RTRIM(event_type) AS EVENT_TYPE,
+          SUBSTR(RTRIM(character_set), 1, 32) AS CHARACTER_SET,
+          SUBSTR(NVL(RTRIM(scheduled_aetitle), 'null'), 1, 16) AS SCHEDULED_AETITLE,
+          SUBSTR(NVL(RTRIM(scheduled_dttm), RTRIM(imaging_request_dttm)), 1, 14) AS SCHEDULED_DTTM,
+          SUBSTR(RTRIM(scheduled_modality), 1, 8) AS SCHEDULED_MODALITY,
+          SUBSTR(RTRIM(scheduled_station), 1, 32) AS SCHEDULED_STATION,
+          SUBSTR(RTRIM(scheduled_location), 1, 32) AS SCHEDULED_LOCATION,
+          SUBSTR(RTRIM(scheduled_proc_id), 1, 32) AS SCHEDULED_PROC_ID,
+          SUBSTR(RTRIM(scheduled_proc_desc), 1, 64) AS SCHEDULED_PROC_DESC,
+          CASE
+              WHEN scheduled_action_codes IS null THEN NVL(RTRIM(scheduled_proc_id), 'null')
+              ELSE SUBSTR(sp_util.parse_string(RTRIM(scheduled_action_codes), ':', 1), 1, 32)
+              END AS SCHEDULED_ACTION_CODES,
+          SUBSTR(RTRIM(scheduled_proc_status), 1, 32) AS SCHEDULED_PROC_STATUS,
+          SUBSTR(RTRIM(premedication), 1, 32) AS PREMEDICATION,
+          SUBSTR(RTRIM(contrast_agent), 1, 32) AS CONTRAST_AGENT,
+          SUBSTR(RTRIM(requested_proc_id), 1, 32) AS REQUESTED_PROC_ID,
+          SUBSTR(RTRIM(requested_proc_desc), 1, 64) AS REQUESTED_PROC_DESC,
+          CASE
+              WHEN requested_proc_codes IS null THEN NVL(RTRIM(requested_proc_id), 'null')
+              ELSE SUBSTR(sp_util.parse_string(RTRIM(requested_proc_codes), ':', 1), 1, 32)
+              END AS REQUESTED_PROC_CODES,
+          SUBSTR(RTRIM(requested_proc_priority), 1, 32) AS REQUESTED_PROC_PRIORITY,
+          SUBSTR(RTRIM(requested_proc_reason), 1, 256) AS REQUESTED_PROC_REASON,
+          SUBSTR(RTRIM(requested_proc_comments), 1, 4000) AS REQUESTED_PROC_COMMENTS,
+          SUBSTR(RTRIM(study_instance_uid), 1, 64) AS STUDY_INSTANCE_UID,
+          SUBSTR(RTRIM(proc_placer_order_no), 1, 32) AS PROC_PLACER_ORDER_NO,
+          SUBSTR(RTRIM(proc_filler_order_no), 1, 32) AS PROC_FILLER_ORDER_NO,
+          SUBSTR(RTRIM(accession_no), 1, 32) AS ACCESSION_NO,
+          SUBSTR(RTRIM(attend_doctor), 1, 32) AS ATTEND_DOCTOR,
+          SUBSTR(RTRIM(perform_doctor), 1, 32) AS PERFORM_DOCTOR,
+          SUBSTR(RTRIM(consult_doctor), 1, 32) AS CONSULT_DOCTOR,
+          NVL(NVL(SUBSTR(RTRIM(request_doctor), 1, 32), RTRIM(attend_doctor)), 'null') AS REQUEST_DOCTOR,
+          SUBSTR(RTRIM(refer_doctor), 1, 32) AS REFER_DOCTOR,
+          SUBSTR(RTRIM(request_department), 1, 32) AS REQUEST_DEPARTMENT,
+          SUBSTR(RTRIM(imaging_request_reason), 1, 256) AS IMAGING_REQUEST_REASON,
+          SUBSTR(RTRIM(imaging_request_comments), 1, 4000) AS IMAGING_REQUEST_COMMENTS,
+          SUBSTR(RTRIM(imaging_request_dttm), 1, 14) AS IMAGING_REQUEST_DTTM,
+          SUBSTR(RTRIM(isr_placer_order_no), 1, 32) AS ISR_PLACER_ORDER_NO,
+          SUBSTR(RTRIM(isr_filler_order_no), 1, 32) AS ISR_FILLER_ORDER_NO,
+          SUBSTR(RTRIM(admission_id), 1, 32) AS ADMISSION_ID,
+          SUBSTR(RTRIM(patient_transport), 1, 32) AS PATIENT_TRANSPORT,
+          SUBSTR(RTRIM(patient_location), 1, 32) AS PATIENT_LOCATION,
+          SUBSTR(RTRIM(patient_residency), 1, 32) AS PATIENT_RESIDENCY,
+          SUBSTR(RTRIM(patient_name), 1, 64) AS PATIENT_NAME,
+          SUBSTR(RTRIM(patient_id), 1, 32) AS PATIENT_ID,
+          SUBSTR(RTRIM(other_patient_name), 1, 64) AS OTHER_PATIENT_NAME,
+          SUBSTR(RTRIM(other_patient_id), 1, 32) AS OTHER_PATIENT_ID,
+          SUBSTR(RTRIM(patient_birth_date), 1, 8) AS PATIENT_BIRTH_DATE,
+          SUBSTR(RTRIM(patient_sex), 1, 3) AS PATIENT_SEX,
+          SUBSTR(RTRIM(patient_weight), 1, 16) AS PATIENT_WEIGHT,
+          SUBSTR(RTRIM(patient_size), 1, 16) AS PATIENT_SIZE,
+          SUBSTR(RTRIM(patient_state), 1, 32) AS PATIENT_STATE,
+          'Y' AS CONFIDENTIALITY, --NVL(SUBSTR(confidentiality, 1, 256), 'Y'),
+          SUBSTR(RTRIM(pregnancy_status), 1, 256) AS PREGNANCY_STATUS,
+          SUBSTR(RTRIM(medical_alerts), 1, 256) AS MEDICAL_ALERTS,
+          SUBSTR(RTRIM(contrast_allergies), 1, 256) AS CONTRAST_ALLERGIES,
+          SUBSTR(RTRIM(special_needs), 1, 32) AS SPECIAL_NEEDS,
+          SUBSTR(RTRIM(specialty), 1, 32) AS SPECIALTY,
+          SUBSTR(RTRIM(diagnosis), 1, 2048) AS DIAGNOSIS,
+          SUBSTR(RTRIM(admit_dttm), 1, 14) AS ADMIT_DTTM,
+          SUBSTR(RTRIM(register_dttm), 1, 14) AS REGISTER_DTTM
+          --SUBSTR(RTRIM(study_ssn), 1, 64) AS STUDY_SSN,
+          --SUBSTR(RTRIM(insurance_code), 1, 64) AS INSURANCE_CODE,
+          --SUBSTR(RTRIM(emergency), 1, 8) AS EMERGENCY,
+          --SUBSTR(RTRIM(special_doctor), 1, 32) AS SPECIAL_DOCTOR
+        FROM mwlWl
+        WHERE replica_dttm = 'ANY'
+        ORDER BY trigger_dttm
+      ]]>
+    </sql>
+   	
+    <sql id="[Inbound][ODBC] Put MWL" type="set">
+      <![CDATA[
+        DECLARE
+        BEGIN
+            SP_MAPPER.PUT_MWL(
+                    @EVENT_TYPE, -- event_type
+                    @ORDER_CONTROL_ID, -- order_control_id
+                    @CHARACTER_SET, -- character_set
+                    @SCHEDULED_AETITLE, -- scheduled_aetitle
+                    @SCHEDULED_DTTM, -- scheduled_dttm
+                    @SCHEDULED_MODALITY, -- scheduled_modality
+                    @SCHEDULED_STATION, -- scheduled_station
+                    @SCHEDULED_LOCATION, -- scheduled_location
+                    @SCHEDULED_PROC_ID, -- scheduled_proc_id
+                    @SCHEDULED_PROC_DESC, -- scheduled_proc_desc
+                    @SCHEDULED_ACTION_CODES, -- scheduled_action_codes
+                    @SCHEDULED_PROC_STATUS, -- scheduled_proc_status
+                    @PREMEDICATION, -- premedication
+                    @CONTRAST_AGENT, -- contrast_agent
+                    @REQUESTED_PROC_ID, -- requested_proc_id
+                    @REQUESTED_PROC_DESC, -- requested_proc_desc
+                    @REQUESTED_PROC_CODES, -- requested_proc_codes
+                    @REQUESTED_PROC_PRIORITY, -- requested_proc_priority
+                    @REQUESTED_PROC_REASON, -- requested_proc_reason
+                    @REQUESTED_PROC_COMMENTS, -- requested_proc_comments
+                    @STUDY_INSTANCE_UID, -- study_instance_uid
+                    @PROC_PLACER_ORDER_NO, -- proc_placer_order_no
+                    @PROC_FILLER_ORDER_NO, -- proc_filler_order_no
+                    @ACCESSION_NO, -- accession_no
+                    @ATTEND_DOCTOR, -- attend_doctor
+                    @PERFORM_DOCTOR, -- perform_doctor
+                    @CONSULT_DOCTOR, -- consult_doctor
+                    @REQUEST_DOCTOR, -- request_doctor
+                    @REFER_DOCTOR, -- refer_doctor
+                    @REQUEST_DEPARTMENT, -- request_department
+                    @IMAGING_REQUEST_REASON, -- imaging_request_reason
+                    @IMAGING_REQUEST_COMMENTS, -- imaging_request_comments
+                    @IMAGING_REQUEST_DTTM, -- imaging_request_dttm
+                    @ISR_PLACER_ORDER_NO, -- isr_placer_order_no
+                    @ISR_FILLER_ORDER_NO, -- isr_filler_order_no
+                    @ADMISSION_ID, -- admission_id
+                    @PATIENT_TRANSPORT, -- patient_transport
+                    @PATIENT_LOCATION, -- patient_location
+                    @PATIENT_RESIDENCY, -- patient_residency
+                    @PATIENT_NAME, -- patient_name
+                    @PATIENT_ID, -- patient_id
+                    @OTHER_PATIENT_NAME, -- other_patient_name
+                    @OTHER_PATIENT_ID, -- other_patient_id
+                    @PATIENT_BIRTH_DATE, -- patient_birth_date
+                    @PATIENT_SEX, -- patient_sex
+                    @PATIENT_WEIGHT, -- patient_weight
+                    @PATIENT_SIZE, -- patient_size
+                    @PATIENT_STATE, -- patient_state
+                    @CONFIDENTIALITY, -- confidentiality
+                    @PREGNANCY_STATUS, -- pregnancy_status
+                    @MEDICAL_ALERTS, -- medical_alerts
+                    @CONTRAST_ALLERGIES, -- contrast_allergies
+                    @SPECIAL_NEEDS, -- special_needs
+                    @SPECIALTY, -- specialty
+                    @DIAGNOSIS, -- diagnosis
+                    @ADMIT_DTTM, -- admit_dttm
+                    @REGISTER_DTTM, -- register_dttm
+                    @STUDY_SSN -- study_ssn
+                );
+        END;
+		  ]]>
+    </sql>
+
+    <sql id="[Inbound][ODBC] Put Order" type="set">
+      <![CDATA[
+        DECLARE
+          v_study_key NUMBER;
+          v_insurancefee_key NUMBER;
+          v_order_control_id  VARCHAR2(32) := @ORDER_CONTROL_ID;
+          v_scheduled_procedure_step VARCHAR2(32) := @SCHEDULED_PROC_STATUS;
+		  v_msps_key NUMBER;
+        BEGIN
+          v_study_key := SP_MAPPER.put_order(
+                            @EVENT_TYPE, -- event_type
+                            @ORDER_CONTROL_ID, -- order_control_id
+                            @PATIENT_ID, -- patient_id
+                            null, -- patient_id_issuer_code
+                            @PATIENT_NAME, -- patient_name
+                            null, -- last_name
+                            null, -- first_name
+                            null, -- middle_name
+                            null, -- prefix
+                            null, -- suffix
+                            @PATIENT_BIRTH_DATE, -- patient_birth_dttm
+                            @PATIENT_SEX, -- patient_sex
+                            null, -- race_code
+                            @CONFIDENTIALITY, -- confidentiality
+                            null, -- account_no
+                            null, -- address
+                            @PATIENT_LOCATION, -- patient_location
+                            @PATIENT_RESIDENCY, -- patient_residence
+                            @REFER_DOCTOR, -- refer_doctor_id
+                            @CONSULT_DOCTOR, -- consult_doctor_id
+                            @PROC_PLACER_ORDER_NO, -- placer_order_id
+                            @PROC_FILLER_ORDER_NO, -- filler_order_id
+                            @ACCESSION_NO, -- accession_no
+                            @SCHEDULED_PROC_STATUS, -- order_stat
+                            @IMAGING_REQUEST_REASON, -- order_reason
+                            @IMAGING_REQUEST_COMMENTS, -- order_comments
+                            @IMAGING_REQUEST_DTTM, -- order_dttm
+                            @REQUEST_DOCTOR, -- order_doctor_id
+                            @REQUEST_DEPARTMENT, -- order_department
+                            null, -- order_entry_user_id
+                            null, -- order_entry_location
+                            null, -- order_callback_phone_no
+                            @ATTEND_DOCTOR, -- attend_doctor_id
+                            @PERFORM_DOCTOR, -- perform_doctor_id
+                            null, -- reqproc_stat
+                            @REQUESTED_PROC_ID, -- reqproc_id
+                            @REQUESTED_PROC_DESC, -- reqproc_desc
+                            @REQUESTED_PROC_CODES, -- reqproc_code_value
+                            null, -- reqproc_code_scheme
+                            null, -- reqproc_code_version
+                            null, -- reqproc_code_meaning
+                            @STUDY_INSTANCE_UID, -- study_instance_uid
+                            @REQUESTED_PROC_REASON, -- reqproc_reason
+                            @REQUESTED_PROC_COMMENTS, -- reqproc_comments
+                            @REQUESTED_PROC_PRIORITY, -- reqproc_priority
+                            null, -- reqproc_location
+                            null, -- patient_arrange
+                            @DIAGNOSIS, -- diagnosis for ODBC
+                            @OTHER_PATIENT_ID, -- other_patient_id for ODBC
+                            @OTHER_PATIENT_NAME, -- other_patient_name for ODBC
+                            'AE', -- source_aetitle
+                            'BROKER', -- broker_aetitle
+                            'ODBC' -- broker_type
+                          );
+          
+          IF v_order_control_id = 'NW' AND v_scheduled_procedure_step IN ('120', '110', 'SC') THEN
+            v_msps_key := SP_MAPPER.put_msps(
+                            v_study_key, -- study_key
+                            @REQUESTED_PROC_CODES, -- reqproc_code_value
+                            null, -- reqproc_code_scheme
+                            @SCHEDULED_PROC_ID, -- sps_id
+                            @SCHEDULED_MODALITY, -- modality
+                            @SCHEDULED_DTTM, -- sps_start_dttm
+                            @SCHEDULED_PROC_ID, -- protcode_value
+                            @SCHEDULED_ACTION_CODES, -- protcode_scheme
+                            @SCHEDULED_PROC_DESC, -- protcode_meaning
+                            1, -- index
+                            'AE', -- aetitle
+                            @SCHEDULED_LOCATION, -- scheduled_location
+                            'ODBC', -- broker_type : 'HL7-PACS' = PACS Only, 'HL7-IHE' = RIS & PACS
+                            @ORDER_CONTROL_ID, -- order_control_id
+                            @SCHEDULED_PROC_STATUS -- order_stat
+                          );
+          END IF;
+          
+          /*
+          v_insurancefee_key := SP_MAPPER.put_insurancefee(
+                                  @STUDY_INSTANCE_UID, -- study_instance_uid
+                                  @PATIENT_ID, -- patient_id
+                                  @PATIENT_BIRTH_DATE, -- patient_birth_dttm
+                                  @SCHEDULED_DTTM, -- request_dttm
+                                  @REQUESTED_PROC_ID, -- request_code
+                                  @REQUESTED_PROC_DESC, -- request_name
+                                  @ACCESSION_NO, -- accession_no
+                                  @INSURANCE_CODE, -- insurance_code
+                                  @SCHEDULED_MODALITY, -- modality
+                                  @EMERGENCY, -- emergency
+                                  @SPECIAL_DOCTOR, -- special_doctor
+                                );
+            */                     
+        END;
+      ]]>
+    </sql>
+
+    <sql id="[Post-Process][ODBC] Update MWL Getter" type="set">
+      <![CDATA[
+        UPDATE mwlwl SET replica_dttm = SYSDATE WHERE mwl_key = #MWL_KEY
+      ]]>
+    </sql>
+
+    <sql id="[Inbound][ODBC] Patient Getter" type="get">
+      <![CDATA[
+        SELECT  
+          patientwl_key AS PATIENTWL_KEY,
+          RTRIM(event_type) AS EVENT_TYPE,
+          SUBSTR(patient_id, 1, 32) AS PATIENT_ID,
+          SUBSTR(patient_name, 1, 64) AS PATIENT_NAME,
+          SUBSTR(english_name, 1, 32) AS ENGLISH_NAME,
+          SUBSTR(patient_ssn, 1, 32) AS PATIENT_SSN,
+          SUBSTR(patient_birth_dttm, 1, 8) AS PATIENT_BIRTH_DTTM,
+          SUBSTR(patient_sex, 1, 3) AS PATIENT_SEX,
+          SUBSTR(patient_weight, 1, 8) AS PATIENT_WEIGHT,
+          SUBSTR(patient_size, 1, 8) AS PATIENT_SIZE,
+          SUBSTR(ethnic_group, 1, 32) AS ETHNIC_GROUP,
+          SUBSTR(tel_no, 1, 32) AS TEL_NO,
+          SUBSTR(fax_no, 1, 32) AS FAX_NO,
+          SUBSTR(zipcode, 1, 16) AS ZIPCODE,
+          SUBSTR(address, 1, 128) AS ADDRESS,
+          SUBSTR(email, 1, 64) AS EMAIL,
+          SUBSTR(blood_type, 1, 8) AS BLOOD_TYPE,
+          SUBSTR(pregnancy_status, 1, 3) AS PREGNANCY_STATUS,
+          SUBSTR(current_location, 1, 32) AS CURRENT_LOCATION,
+          SUBSTR(current_residency, 1, 32) AS CURRENT_RESIDENCY,
+          SUBSTR(current_department, 1, 32) AS CURRENT_DEPARTMENT,
+          SUBSTR(current_doctor_id, 1, 32) AS CURRENT_DOCTOR_ID,
+          SUBSTR(current_doctor_name, 1, 64) AS CURRENT_DOCTOR_NAME,
+          SUBSTR(admit_dttm, 1, 14) AS ADMIT_DTTM,
+          SUBSTR(discharge_dttm, 1, 14) AS DISCHARGE_DTTM
+        FROM patientWl
+        WHERE replica_dttm = 'ANY'
+        ORDER BY trigger_dttm
+      ]]>
+    </sql>
+
+    <sql id="[Inbound][ODBC] Put Patient" type="set">
+      <![CDATA[
+        DECLARE
+          v_patient_key NUMBER;
+        BEGIN
+          v_patient_key := SP_MAPPER.put_patient(
+                            @EVENT_TYPE, -- event_type
+                            @PATIENT_ID, -- patient_id
+                            null, -- prior_patient_id
+                            null, -- patient_id_issuer_code
+                            @PATIENT_SSN, -- patient_ssn
+                            @PATIENT_NAME, -- patient_name
+                            null, -- last_name
+                            null, -- first_name
+                            null, -- middle_name
+                            null, -- prefix
+                            null, -- suffix
+                            null, -- marital_stat
+                            null, -- confidentiality
+                            @PATIENT_BIRTH_DTTM, -- patient_birth_dttm
+                            null, -- patient_death_dttm
+                            @PATIENT_SEX, -- patient_sex
+                            @PATIENT_SIZE, -- patient_size
+                            @PATIENT_WEIGHT, -- patient_weight
+                            @BLOOD_TYPE, -- blood_type_abo
+                            null, -- blood_type_rh
+                            null, -- citizenship
+                            null, -- occupation
+                            null, -- race_code
+                            null, -- language_code
+                            null, -- religion_code
+                            null, -- birthplace
+                            null, -- multiple_birth_status
+                            null, -- birth_order
+                            @EMAIL, -- email
+                            null, -- phone_no
+                            null, -- pregnancy_code
+                            null, -- patient_stat
+                            null, -- account_no
+                            null, -- contact_type
+                            @TEL_NO, -- home_phone_no
+                            null, -- busi_phone_no
+                            @FAX_NO, -- fax_no
+                            @ADDRESS, -- address
+                            null, -- city
+                            null, -- state
+                            null, -- country
+                            @ZIPCODE, -- zipcode
+                            null, -- visit_number
+                            null, -- visit_stat
+                            @ADMIT_DTTM, -- admit_dttm
+                            @DISCHARGE_DTTM, -- discharge_dttm
+                            @CURRENT_LOCATION, -- patient_location
+                            @CURRENT_RESIDENCY, -- patient_residence
+                            @CURRENT_DOCTOR_ID, -- refer_doctor_id
+                            null, -- consult_doctor_id
+                            null, -- institution_code
+                            null, -- visit_comment
+                            null, -- admit_route
+                            null, -- lastmen_strual_dttm
+                            @PREGNANCY_STATUS, -- pregnancy_status
+                            null, -- code_abbreviation
+                            null, -- station_code
+                            @ENGLISH_NAME, -- english_name
+                            @ETHNIC_GROUP, -- ethnic_group
+                            @CURRENT_DEPARTMENT, -- current_department
+                            @CURRENT_DOCTOR_NAME, -- refer_doctor_name
+                            null, -- consult_doctor_name
+                            'BROKER', -- broker_aetitle
+                            'ODBC' -- broker_type
+                            );
+        END;
+      ]]>
+    </sql>
+
+    <sql id="[Post-Process][ODBC] Update Patient Getter" type="set">
+      <![CDATA[
+        UPDATE patientwl SET replica_dttm = SYSDATE WHERE patientwl_key = #PATIENTWL_KEY
+      ]]>
+    </sql>
+
+    <sql id="[Inbound][ODBC] Report Getter" type="get">
+      <![CDATA[
+        SELECT  
+          REPORTWL_KEY,
+          exam_id AS EXAM_ID,
+          patient_id AS PATIENT_ID,
+          NVL(report_stat, 'F') AS REPORT_STAT,
+          creator_id AS CREATOR_ID,
+          creator_name AS CREATOR_NAME,
+          create_dttm AS CREATE_DTTM,
+          dictator_id AS DICTATOR_ID,
+          dictator_name AS DICTATOR_NAME,
+          dictate_dttm AS DICTATE_DTTM,
+          transcriber_id AS TRANSCRIBER_ID,
+          transcriber_name AS TRANSCRIBER_NAME,
+          transcribe_dttm AS TRANSCRIBE_DTTM,
+          approver_id AS APPROVER_ID,
+          approver_name AS APPROVER_NAME,
+          approve_dttm AS APPROVE_DTTM,
+          reviser_id AS REVISER_ID,
+          reviser_name AS REVISER_NAME,
+          revise_dttm AS REVISE_DTTM,
+          report_type AS REPORT_TYPE,
+          report_text AS REPORT_TEXT,
+          conclusion AS CONCLUSION
+        FROM reportWl
+        WHERE replica_dttm = 'ANY'
+        ORDER BY trigger_dttm
+      ]]>
+    </sql>
+
+    <sql id="[Inbound][ODBC] Put Report" type="set">
+      <![CDATA[
+        DECLARE
+          v_report_key NUMBER;
+        BEGIN
+          v_report_key := SP_MAPPER.put_report(
+                              null, -- event_type
+                              null, -- report_control_id
+                              @EXAM_ID, -- accession_no
+                              @PATIENT_ID, -- patient_id
+                              @REPORT_STAT, -- report_stat
+                              @CREATOR_ID, -- creator_id
+                              @CREATOR_NAME, -- creator_name
+                              @CREATE_DTTM, -- create_dttm
+                              @DICTATOR_ID, -- dictator_id
+                              @DICTATOR_NAME, -- dictator_name
+                              @DICTATE_DTTM, -- dictate_dttm
+                              @TRANSCRIBER_ID, -- transcriber_id
+                              @TRANSCRIBER_NAME, -- transcriber_name
+                              @TRANSCRIBE_DTTM, -- transcribe_dttm
+                              @APPROVER_ID, -- approver_id
+                              @APPROVER_NAME, -- approver_name
+                              @APPROVE_DTTM, -- approve_dttm
+                              @REVISER_ID, -- reviser_id
+                              @REVISER_NAME, -- reviser_name
+                              @REVISE_DTTM, -- revise_dttm
+                              @REPORT_TYPE, -- report_type
+                              $REPORT_TEXT, -- report_text  -- limit size : 32768
+                              @CONCLUSION, -- conclusion
+                              'ODBC' -- broker_type
+                            );
+        END;
+      ]]>
+    </sql>
+
+    <sql id="[Post-Process][ODBC] Update Report Getter" type="set">
+      <![CDATA[
+        UPDATE reportwl SET replica_dttm = SYSDATE WHERE reportwl_key = #REPORTWL_KEY
+      ]]>
+    </sql>
+
+    <sql id="[Inbound][ODBC] User Getter" type="get">
+      <![CDATA[
+        SELECT  
+          user_key AS USER_KEY,
+          SUBSTR(user_id, 1, 16) AS USER_ID,
+          SUBSTR(user_name, 1, 64) AS USER_NAME,
+          SUBSTR(password, 1, 128) AS PASSWORD,
+          SUBSTR(user_level, 1, 16) AS USER_LEVEL,
+          SUBSTR(user_status, 1, 16) AS USER_STATUS,
+          comments AS COMMENTS
+        FROM userWl
+        WHERE replica_dttm = 'ANY'
+        ORDER BY trigger_dttm
+      ]]>
+    </sql>
+
+    <sql id="[Inbound][ODBC] Put User" type="set">
+      <![CDATA[
+        DECLARE
+          v_user_key NUMBER;
+        BEGIN
+          v_user_key := SP_MAPPER.put_user(
+                          @USER_ID, -- user_id
+                          @USER_NAME, -- user_name
+                          @PASSWORD, -- password
+                          @USER_LEVEL, -- user_level
+                          @USER_STATUS, -- user_status
+                          @COMMENTS -- comments
+                        );
+        END;
+      ]]>
+    </sql>
+	
+    <sql id="[Post-Process][ODBC] Update User Getter" type="set">
+      <![CDATA[
+        UPDATE userwl SET replica_dttm = SYSDATE WHERE user_key = #USER_KEY
+      ]]>
+    </sql>
+
+    <sql id="[Inbound][ODBC] ORM Getter" type="get">
+      <![CDATA[
+        SELECT
+          orm_key AS ORM_KEY,
+          event_type AS EVENT_TYPE,
+          SUBSTR(scheduled_date_time, 1, 14) AS SCHEDULED_DTTM,
+          SUBSTR(diagnostic_serv_sect_id, 1, 8) AS SCHEDULED_MODALITY,
+          SUBSTR(filler_field2, 1, 32) AS FILLER_FIELD2,
+          SUBSTR(orm_field2, 1, 32) AS SCHEDULED_LOCATION,
+          SUBSTR(filler_field1, 1, 32) AS SCHEDULED_PROC_ID,
+          SUBSTR(specimen_source, 1, 64) AS SCHEDULED_PROC_DESC,
+          SUBSTR(universal_service_id, 1, 256) AS SCHEDULED_ACTION_CODES,
+          order_control_id AS ORDER_CONTROL_ID,
+          CASE
+            WHEN order_control_id = 'CA' THEN '0'
+            ELSE '120'
+            END AS SCHEDULED_PROC_STATUS,
+          SUBSTR(placer_field2, 1, 32) AS REQUESTED_PROC_ID,
+          sp_util.parse_string(universal_service_id, '^', 1) AS REQUESTED_PROC_CODES,
+          sp_util.parse_string(universal_service_id, '^', 2) AS REQUESTED_PROC_DESC,
+          SUBSTR(quantity_timing, 1, 32) AS REQUESTED_PROC_PRIORITY,
+          reason_for_study AS REQUESTED_PROC_COMMENTS,
+          SUBSTR(reference_pointer, 1, 64) AS STUDY_INSTANCE_UID,
+          SUBSTR(placer_field1, 1, 32) AS ACCESSION_NO,
+          SUBSTR(sp_util.parse_string(consulting_doctor_name, '^', 2), 1, 32) AS PERFORM_DOCTOR,
+          NVL(sp_util.parse_string(orm_field2, '^', 2), 'IHE_Doc') AS REFER_DOCTOR,
+          NVL(SUBSTR(sp_util.parse_string(attending_doctor_name, '^', 2), 1, 32)
+              , NVL(sp_util.parse_string(orm_field2, '^', 2), 'IHE_Doc')) AS REQUEST_DOCTOR,
+          SUBSTR(NVL(prior_patient_location, 'IHE'), 1, 32) AS REQUEST_DEPARTMENT,
+          SUBSTR(request_dttm, 1, 14) AS IMAGING_REQUEST_DTTM,
+          SUBSTR(orm_field1, 1, 32) AS ADMISSION_ID,
+          SUBSTR(patient_class, 1, 32) AS PATIENT_LOCATION,
+          SUBSTR(patient_residency, 1, 32) AS PATIENT_RESIDENCY,
+          SUBSTR(patient_name, 1, 64) AS PATIENT_NAME,
+          SUBSTR(patient_id, 1, 32) AS PATIENT_ID,
+          SUBSTR(patient_ename, 1, 64) AS OTHER_PATIENT_NAME,
+          SUBSTR(patient_ssn, 1, 32) AS OTHER_PATIENT_ID,
+          SUBSTR(patient_birth_dttm, 1, 8) AS PATIENT_BIRTH_DATE,
+          SUBSTR(patient_sex, 1, 1) AS PATIENT_SEX,
+          SUBSTR(specialty, 1, 32) AS SPECIALTY,
+          diagnosis AS DIAGNOSIS,
+          null AS CONFIDENTIALITY,
+          null AS CONSULT_DOCTOR,
+          null AS PROC_FILLER_ORDER_NO,
+          null AS PROC_PLACER_ORDER_NO,
+          null AS IMAGING_REQUEST_REASON,
+          null AS IMAGING_REQUEST_COMMENTS,
+          null AS ATTEND_DOCTOR,
+          null AS REQUESTED_PROC_REASON,
+          'AE' AS SCHEDULED_AETITLE
+        FROM ormQueue
+        WHERE replica_dttm = 'ANY'
+        ORDER BY trigger_dttm
+      ]]>
+    </sql>
+	
+    <sql id="[Post-Process][ODBC] Update ORM Getter" type="set">
+      <![CDATA[
+        UPDATE ormqueue SET replica_dttm = SYSDATE WHERE orm_key = #ORM_KEY
+      ]]>
+    </sql>
+
+    <sql id="[Inbound][ODBC] ADT Getter" type="get">
+      <![CDATA[
+        SELECT  
+          SUBSTR(event_type, 1, 32) AS EVENT_TYPE,
+          SUBSTR(patient_account_no, 1, 32) AS PATIENT_ACCOUNT_NO,
+          SUBSTR(patient_id, 1, 32) AS PATIENT_ID,
+          SUBSTR(prior_patient_id, 1, 64) AS PRIOR_PATIENT_ID,
+          SUBSTR(patient_name, 1, 32) AS PATIENT_NAME,
+          SUBSTR(patient_ename, 1, 32) AS ENGLISH_NAME,
+          SUBSTR(patient_ssn, 1, 32) AS PATIENT_SSN,
+          SUBSTR(patient_birth_dttm, 1, 32) AS PATIENT_BIRTH_DTTM,
+          SUBSTR(patient_sex, 1, 32) AS PATIENT_SEX,
+          SUBSTR(patient_weight, 1, 32) AS PATIENT_WEIGHT,
+          SUBSTR(patient_size, 1, 32) AS PATIENT_SIZE,
+          SUBSTR(patient_ethnic_group, 1, 32) AS ETHNIC_GROUP,
+          SUBSTR(patient_phone_no, 1, 32) AS TEL_NO,
+          SUBSTR(patient_fax_no, 1, 32) AS FAX_NO,
+          SUBSTR(patient_zipcode, 1, 32) AS ZIPCODE,
+          SUBSTR(patient_address, 1, 32) AS ADDRESS,
+          SUBSTR(patient_email, 1, 32) AS EMAIL,
+          SUBSTR(patient_blood_type, 1, 32) AS BLOOD_TYPE,
+          SUBSTR(patient_pregnancy_status, 1, 32) AS PREGNANCY_STATUS,
+          SUBSTR(patient_class, 1, 32) AS CURRENT_LOCATION,
+          SUBSTR(patient_location, 1, 32) AS CURRENT_RESIDENCY,
+          SUBSTR(prior_patient_location, 1, 32) AS CURRENT_DEPARTMENT,
+          SUBSTR(current_doctor_id, 1, 32) AS CURRENT_DOCTOR_ID,
+          SUBSTR(current_doctor_name, 1, 32) AS CURRENT_DOCTOR_NAME,
+          null AS ADMIT_DTTM,
+          null AS DISCHARGE_DTTM,
+		  SUBSTR(adt_field1, 1, 128) AS ADT_FIELD1,
+          SUBSTR(adt_field2, 1, 128) AS ADT_FIELD2,
+          SUBSTR(adt_field3, 1, 128) AS ADT_FIELD3,
+          SUBSTR(adt_field4, 1, 128) AS ADT_FIELD4,
+          SUBSTR(adt_field5, 1, 128) AS ADT_FIELD5,
+          SUBSTR(adt_field6, 1, 128) AS ADT_FIELD6,
+          SUBSTR(adt_field7, 1, 128) AS ADT_FIELD7,
+          SUBSTR(adt_field8, 1, 128) AS ADT_FIELD8,
+          SUBSTR(adt_field9, 1, 128) AS ADT_FIELD9,
+          SUBSTR(adt_field10, 1, 128) AS ADT_FIELD10
+        FROM adtQueue
+        WHERE replica_dttm = 'ANY'
+        ORDER BY trigger_dttm
+      ]]>
+    </sql>
+
+    <sql id="[Post-Process][ODBC] Update ADT Getter" type="set">
+      <![CDATA[
+        UPDATE adtqueue SET replica_dttm = SYSDATE WHERE adt_key = #ADT_KEY
+      ]]>
+    </sql>
+
+    <sql id="[Outbound][ODBC] Study Getter - Match" type="get">
+      <![CDATA[
+        SELECT
+          q.routeitem_key AS ROUTEITEM_KEY,
+          q.match_stat AS MATCH_STAT,
+          p.patient_id AS PATIENT_ID,
+          s.study_key AS STUDY_KEY,
+          s.access_no AS ACCESS_NO,
+          s.study_stat AS STUDY_STAT,
+          s.study_instance_uid AS STUDY_INSTANCE_UID,
+          to_char(s.study_dttm, 'YYYYMMDDHH24MISS') AS STUDY_DTTM,
+          s.request_code AS REQUEST_CODE,
+          s.request_name AS REQUEST_NAME,
+          s.modalities AS MODALITIES,
+          s.department AS DEPARTMENT,
+          st.station_name AS STATION_NAME,
+          s.source_aetitle AS SOURCE_AETITLE,
+          m.sps_location AS SPS_LOCATION,
+          to_char(m.sps_start_dttm, 'YYYYMMDDHH24MISS') AS SPS_START_DTTM,
+          v.patient_location AS PATIENT_LOCATION,
+          to_char(s.request_dttm, 'YYYYMMDDHH24MISS') AS REQUEST_DTTM,
+          s.study_desc AS STUDY_DESC,
+          s.bodyparts AS BODYPARTS,
+          m.sps_stat AS SPS_STAT,
+          m.sps_id AS SPS_ID,
+          m.sps_comments AS SPS_COMMENTS,
+          p.patient_name AS PATIENT_NAME,
+          p.patient_sex AS PATIENT_SEX,
+          v.visit_no AS VISIT_NO,
+          NVL(s.series_count, 0) AS SERIES_COUNT,
+          NVL(s.instance_count, 0) AS INSTANCE_COUNT
+        FROM  study s, msps m, patient p, iOrder i, visit v, station st,
+              (SELECT routeitem_key, object_key, match_stat
+               FROM (SELECT /*+ rule */
+                         i.routeitem_key AS ROUTEITEM_KEY,
+                         i.object_key AS OBJECT_KEY,
+                         CASE
+                             WHEN s.validate_dttm IS NOT NULL AND s.order_key IS NOT NULL AND s.series_count > 0 AND s.instance_count > 0 THEN 'M'
+                             ELSE 'U'
+                             END AS MATCH_STAT
+                     FROM hl7routeItem i, hl7station st, study s, iOrder o
+                     WHERE i.dst_station_key = st.station_key
+                       AND i.route_stat = 'N'
+                       AND i.message_type = 'ORM'
+                       AND i.EVENT_TYPE IN ('CM', 'MP', 'UM', 'SC', 'CA')
+                       AND i.object_key = s.study_key(+)
+                       AND s.order_key = o.order_key(+)
+                     ORDER BY i.trigger_dttm ASC)
+               WHERE rownum < 1000) q
+        WHERE q.match_stat = 'M'
+          AND s.study_key = q.object_key
+          AND m.study_key = s.study_key
+          AND s.patient_id = p.patient_id
+          AND s.order_key = i.order_key
+          AND p.patient_key = i.patient_key
+          AND i.visit_key = v.visit_key(+)
+          AND m.station_key = st.station_key
+          AND s.validate_dttm IS NOT NULL
+      ]]>
+    </sql>
+
+    <sql id="[Outbound][ODBC] Study Getter - UnMatch" type="get">
+      <![CDATA[
+        SELECT
+          p.patient_id AS PATIENT_ID,  
+          i.filler_order_id AS ACCESS_NO, 
+          s.study_key AS STUDY_KEY,
+          s.modalities AS MODALITIES, 
+          s.request_department AS DEPARTMENT, 
+          s.study_instance_uid AS STUDY_INSTANCE_UID,
+          st.station_name AS STATION_NAME, 
+          m.sps_location AS SPS_LOCATION, 
+          to_char(m.sps_start_dttm, 'YYYYMMDDHH24MISS') AS SPS_START_DTTM, 
+          v.patient_location AS PATIENT_LOCATION, 
+          to_char(s.request_dttm, 'YYYYMMDDHH24MISS') AS REQUEST_DTTM, 
+          m.sps_stat AS SPS_STAT, 
+          m.sps_id AS SPS_ID, 
+          m.sps_comments AS SPS_COMMENTS, 
+          p.patient_name AS PATIENT_NAME, 
+          p.patient_sex AS PATIENT_SEX, 
+          v.visit_no AS VISIT_NO
+        FROM  study s, msps m, patient p, iOrder i, visit v, station st,
+              (SELECT routeitem_key, study_instance_uid, match_stat
+               FROM (SELECT /*+ rule */
+                         i.routeitem_key AS ROUTEITEM_KEY,
+                         s.study_instance_uid AS STUDY_INSTANCE_UID,
+                         CASE
+                             WHEN s.validate_dttm IS NOT NULL AND s.order_key IS NOT NULL AND s.series_count > 0 AND s.instance_count > 0 THEN 'M'
+                             ELSE 'U'
+                             END AS MATCH_STAT
+                     FROM hl7routeItem i, hl7station st, study s, iOrder o
+                     WHERE i.dst_station_key = st.station_key
+                       AND i.route_stat = 'N'
+                       AND i.message_type = 'ORM'
+                       AND i.EVENT_TYPE IN ('CM', 'MP', 'UM', 'SC', 'CA')
+                       AND s.order_key = o.order_key(+)
+                     ORDER BY i.trigger_dttm ASC)
+               WHERE rownum < 1000) q
+        WHERE q.match_stat = 'U'
+          AND s.study_instance_uid = q.study_instance_uid
+          AND m.study_key = s.study_key 
+          AND s.patient_id = p.patient_id 
+          AND s.order_key = i.order_key 
+          AND p.patient_key = i.patient_key 
+          AND i.visit_key = v.visit_key(+) 
+          AND m.station_key = st.station_key
+      ]]>
+    </sql>
+
+    <sql id="[Post-Process] UPDATE Hl7Routeitem - Success" type="set">
+      <![CDATA[
+        UPDATE hl7routeitem
+        SET route_stat = 'Y',
+            replica_dttm = SYSDATE
+        WHERE routeitem_key = @ROUTEITEM_KEY
+		  ]]>
+    </sql>
+
+    <sql id="[Post-Process] UPDATE Hl7Routeitem - Failure" type="set">
+      <![CDATA[
+        UPDATE hl7routeitem
+        SET route_stat = CASE
+                              WHEN NVL(retry_count, 0) >= 2 THEN 'E'
+                              ELSE 'N'
+                          END,
+            retry_count = NVL(retry_count, 0) + 1,
+            replica_dttm = SYSDATE
+        WHERE routeitem_key = @ROUTEITEM_KEY
+		  ]]>
+    </sql>
+
+    <sql id="[Outbound][ODBC] INSERT INTO study_ris" type="set">
+      <![CDATA[
+        BEGIN
+          DELETE FROM study_ris where accession_no = @ACCESS_NO;
+          INSERT INTO study_ris(INPUT_DATE, STUDY_KEY, PATIENT_ID, ACCESSION_NO, STUDY_STAT, STUDY_INSTANCE_UID, STUDY_DTTM, REQUEST_CODE, REQUEST_NAME, PERFORM_MODALITY, PERFORM_STATION, SOURCE_AETITLE, SCHEDULED_LOCATION, PERFORM_DEPARTMENT, SCHEDULED_DTTM, PATIENT_LOCATION, REQUEST_DTTM, ADMISSION_ID, REQUEST_DOCTOR) 
+            VALUES (TOCHAR(SYSDATE, 'yyyymmddhh24miss'), @STUDY_KEY, @PATIENT_ID, @ACCESS_NO, @STUDY_STAT, @STUDY_INSTANCE_UID, @STUDY_DTTM, @REQUEST_CODE, @REQUEST_NAME, @MODALITIES, @STATION_NAME, @SOURCE_AETITLE, @SPS_LOCATION, @DEPARTMENT, @SPS_START_DTTM, @PATIENT_LOCATION, @REQUEST_DTTM, null, null);
+        END;
+      ]]>
+    </sql>
+    
+    <sql id="[Outbound][ODBC] Report Getter" type="get">
+      <![CDATA[
+        SELECT
+          q.routeitem_key AS ROUTEITEM_KEY,
+          q.message_type AS MESSAGE_TYPE,
+          q.event_type AS EVENT_TYPE,
+          q.object_type AS OBJECT_TYPE,
+          q.retry_count AS RETRY_COUNT,
+          r.report_key AS REPORT_KEY,
+          s.patient_id AS PATIENT_ID,
+          s.access_no AS ACCESS_NO,
+          s.study_instance_uid AS STUDY_INSTANCE_UID,
+          s.study_stat AS STUDY_STAT,
+          s.addendum_stat AS ADDENDUM_STAT,
+          c.userid AS CREATE_USERID,
+          c.user_name AS CREATE_USERNAME,
+          to_char(r.create_dttm, 'YYYYMMDDHH24MISS') AS CREATE_DTTM,
+          d.userid AS DICTATE_USERID,
+          d.user_name AS DICTATE_USERNAME,
+          to_char(r.dictate_dttm, 'YYYYMMDDHH24MISS') AS DICTATE_DTTM,
+          t.userid AS TRANSCRIBE_USERID,
+          t.user_name AS TRANCRIBE_USERNAME,
+          to_char(r.transcribe_dttm,'YYYYMMDDHH24MISS') AS TRANSCRIBE_DTTM,
+          a.userid AS APPROVE_USERID,
+          a.user_name AS APPROVE_USERNAME,
+          to_char(r.approval_dttm,'YYYYMMDDHH24MISS') AS APPROVE_DTTM,
+          v.userid AS REVISE_USERID,
+          v.user_name AS REVISE_USERNAME,
+          to_char(r.revision_dttm, 'YYYYMMDDHH24MISS') AS REVISE_DTTM,
+          r.report_type AS REPORT_TYPE,
+          NVL(DBMS_LOB.GETLENGTH(r.report_text_lob), 0) AS REPORT_TEXT,
+          r.conclusion AS CONCLUSION,
+          to_char(s.study_dttm, 'YYYYMMDDHH24MISS') AS STUDY_DTTM,
+          s.institution AS INSTITUTION,
+          s.department AS DEPARTMENT,
+          s.modalities AS MODALITIES,
+          to_char(s.request_dttm, 'YYYYMMDDHH24MISS') AS REQUEST_DTTM,
+          s.request_name AS REQUEST_NAME,
+          s.request_code AS REQUEST_CODE,
+          s.request_doctor AS REQUEST_DOCTOR,
+          s.perform_doctor AS PERFORM_DOCTOR,
+          s.refer_doctor AS REFER_DOCTOR,
+          to_char(m.sps_start_dttm, 'YYYYMMDDHH24MISS') AS SPS_START_DTTM,
+          s.patient_name AS PATIENT_NAME,
+          s.patient_sex AS PATIENT_SEX,
+          to_char(s.patient_birth_dttm, 'YYYYMMDD') AS PATIENT_BIRTH_DTTM,
+          s.study_id AS SPS_ID,
+          s.study_comments AS STUDY_COMMENTS,
+          s.study_reason AS STUDY_REASON,
+          s.operators AS OPERATORS,
+          s.patient_location AS PATIENT_LOCATION,
+          s.source_aetitle AS AETITLE,
+          r.alink_key AS ALINK_KEY,
+          m.sps_location AS SPS_LOCATION
+          -- r.digital_sign_flag AS DIGITAL_SIGN_FLAG,
+          -- r.digital_sign_data AS DIGITAL_SIGN_DATA,
+          -- r.digital_sign_dttm AS DIGITAL_SIGN_DTTM,
+          -- r.certificate_dn AS CERTIFICATE_DN,
+          -- r.digital_sign_key AS DIGITAL_SIGN_KEY
+      FROM report r, study s, users c, users d, users t, users a, users v, msps m,
+           (SELECT routeitem_key, message_type, object_key, event_type, object_type, retry_count
+            FROM (SELECT routeitem_key, message_type, event_type, object_type, object_key, NVL(retry_count, 0) AS RETRY_COUNT
+                  FROM hl7routeItem
+                  WHERE message_type = 'ORU'
+                    AND route_stat = 'N'
+                    AND object_type in ('R', 'A')
+                    AND NVL(retry_count, 0) <= 2
+                  ORDER BY routeitem_key ASC)
+            WHERE rownum < 1000) q
+      WHERE r.report_key IN q.object_key
+        AND s.study_key = r.study_key
+        AND r.study_key = m.study_key
+        AND s.study_stat > 200
+        AND r.creator_key = c.user_key(+)
+        AND r.dictator_key = d.user_key(+)
+        AND r.transcriber_key = t.user_key(+)
+        AND r.approver_key = a.user_key(+)
+        AND r.reviser_key = v.user_key(+)
+      ]]>
+    </sql>
+
+    <sql id="[Outbound][ODBC] INSERT INTO report_ris" type="set">
+      <![CDATA[
+        DECLARE
+            v_report_type varchar2(10) := @OBJECT_TYPE;
+            v_report_stat varchar2(10);
+        BEGIN
+            DELETE FROM report_ris WHERE accession_no = @ACCESS_NO;
+
+            IF v_report_type = 'R' THEN
+                v_report_stat := @STUDY_STAT;
+            ELSE
+                v_report_stat := @ADDENDUM_STAT;
+            END IF;
+            
+            v_report_stat := NVL(v_report_stat, 'F');
+    
+            INSERT INTO report_ris (patient_id, accession_no, study_instance_uid, report_stat, creator_id, creator_name, create_dttm, dictator_id, dictator_name, dictate_dttm, transcriber_id, transcriber_name, transcribe_dttm, approver_id, approver_name, approve_dttm, reviser_id, reviser_name, revise_dttm, report_type, report_text, conclusion, study_dttm, scheduled_location, perform_department, perform_modality, request_dttm, request_name, request_code, request_doctor, perform_doctor, refer_doctor, scheduled_dttm, patient_name, patient_sex, patient_birth_dttm, admission_id, study_comments, study_reason, attend_doctor)
+                VALUES (@PATIENT_ID, @ACCESS_NO, @STUDY_INSTANCE_UID, v_report_stat, @CREATE_USERID, @CREATE_USERNAME, @CREATE_DTTM, @DICTATE_USERID, @DICTATE_USERNAME, @DICTATE_DTTM, @TRANSCRIBE_USERID, @TRANCRIBE_USERNAME, @TRANSCRIBE_DTTM, @APPROVE_USERID, @APPROVE_USERNAME, @APPROVE_DTTM, @REVISE_USERID, @REVISE_USERNAME, @REVISE_DTTM, @REPORT_TYPE, @REPORT_TEXT, @CONCLUSION, @STUDY_DTTM, @INSTITUTION, @DEPARTMENT, @MODALITIES, @REQUEST_DTTM, @REQUEST_NAME, @REQUEST_CODE, @REQUEST_DOCTOR, @PERFORM_DOCTOR, @REFER_DOCTOR, @SPS_START_DTTM, @PATIENT_NAME, @PATIENT_SEX, @PATIENT_BIRTH_DTTM, @SPS_ID, @STUDY_COMMENTS, @STUDY_REASON, @OPERATORS);
+        END;
+      ]]>
+    </sql>
+    
+  </package>
+ 
+  <package id="Oracle Client">
+
+    <sql id="EXAMPLE" type="get">
+      <![CDATA[
+        SELECT 1 AS ONE
+				FROM	DUAL
+		  ]]>
+    </sql>
+
+  </package>
+
+  <package id="ODBC">
+
+    <sql id="EXAMPLE" type="get">
+      <![CDATA[
+        SELECT 1 AS ONE
+				FROM	DUAL
+		  ]]>
+    </sql>
+
+  </package>
+  
+  <!-- ============================================================================================================== -->
+  <!--                                    DO NOT EDIT THE PACKAGE BELOW                                               -->
+  <!--                       THE PACKAGE BELOW IS USED AS A FIXED VALUE IN THE IntelliLink                            -->
+  <!-- ============================================================================================================== -->
+
+  <package id="DO_NOT_EDIT">
+
+    <!--                            BEGIN : IHP                              -->
+
+    <sql id="SELECT_ID_CODE" type="get">
+      <![CDATA[
+        SELECT se.svc_cd AS SVC_CD,
+                se.inu_cd AS INU_CD,
+                i.inu_nm AS INU_NM,
+                se.faclt_cd AS FACLT_CD,
+                f.faclt_nm AS FACLT_NM,
+                se.sys_cd AS SYS_CD,
+                sy.sys_nm AS SYS_NM
+        FROM instMst i, facilityMst f, sysMst sy, service se
+        WHERE se.inu_cd = i.inu_cd
+          AND se.faclt_cd = f.faclt_cd
+          AND se.sys_cd = sy.sys_cd
+          AND se.act_stat = 'V'
+          AND se.faclt_cd = sy.faclt_cd
+        ORDER BY se.svc_cd ASC
+      ]]>
+    </sql>
+
+    <!--                   BEGIN : Content Uploader Sender                   -->
+
+    <!-- Content Mode 1 -->
+    <sql id="GET_CONTENTCATG" type="get">
+      <![CDATA[
+        SELECT cntt_catg_key, cntt_catg_nm
+        FROM	 contentCatg
+        WHERE	 inu_cd = @INSTITUTION_CODE
+        AND		 faclt_cd = @FACILITY_CODE
+        AND		 use_yn = 'Y'
+      ]]>
+    </sql>
+
+    <!-- Content Mode 2 -->
+    <sql id="GET_CONTENTTYPE" type="get">
+      <![CDATA[
+        SELECT  cntt_catg_typ_key, cntt_catg_typ_nm
+        FROM    contentType
+        WHERE   cntt_catg_key = @CNTT_CATG_KEY
+        AND     use_yn = 'Y'
+      ]]>
+    </sql>
+
+    <!-- MIME Type 1 -->
+    <sql id="GET_MIMETYPEGROUP" type="get">
+      <![CDATA[
+        SELECT  mime_typ_grp_key, mime_typ_grp_nm
+        FROM    mimeTypeGroup
+        ORDER BY mime_typ_grp_nm ASC
+      ]]>
+    </sql>
+
+    <!-- MIME Type 2 -->
+    <sql id="GET_MIMETYPE" type="get">
+      <![CDATA[
+        SELECT  mime_typ_key, mime_file_ex, mime_typ, mime_desc
+        FROM    mimeType
+        WHERE   mime_typ_grp_key = @MIME_TYP_GRP_KEY
+        ORDER BY mime_file_ex ASC
+      ]]>
+    </sql>
+
+    <!-- Inter HTTP -->
+    <sql id="GET_CU_INTER_HTTP" type="get">
+      <![CDATA[
+        SELECT  inter_http
+        FROM    stationMst
+        WHERE   svc_cd = @SERVICE_CODE
+        AND     prod_key = (SELECT prod_key FROM productMst WHERE prod_nm = 'CONTENTUPLOADER')
+        AND     use_yn = 'Y'
+        AND     rownum = 1
+      ]]>
+    </sql>
+
+    <!-- Authentication URL -->
+    <sql id="GET_CU_AUTH_URL" type="get">
+      <![CDATA[
+        SELECT  p.pf_val AS PF_VAL
+        FROM 	  sysProfileMst pm, sysProfile p
+        WHERE   pm.pf_key = p.pf_key
+        AND		  pm.pf_sec = 'SECURITY'
+        AND		  pm.pf_entry = 'AUTHORIZATION_SERVER_HTTP_BASE_URL'
+        AND		  pm.pf_lv = 'IHP'
+      ]]>
+    </sql>
+
+    <!--                      END : Content Uploader Sender                  -->
+
+    <!--                            BEGIN : IHP                              -->
+
+  </package>
+
+</root>

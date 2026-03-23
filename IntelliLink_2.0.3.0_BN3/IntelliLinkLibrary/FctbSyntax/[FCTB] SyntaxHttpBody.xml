@@ -1,0 +1,31 @@
+﻿<?xml version="1.0" encoding="utf-8" ?>
+<doc>
+    <!-- Brackets for auto-highlighting -->
+    <brackets left="{" right="}" />
+    <brackets left="[" right="]" />
+
+    <!-- Style definitions -->
+    <style name="DefaultText" color="White" />
+    <style name="PropertyName" color="#6796E6" />
+    <style name="String" color="#CE9178" />
+    <style name="Number" color="#B5CEA8" />
+    <style name="Keyword" color="#569CD6" />
+    <style name="Brackets" color="Yellow" />
+
+    <!-- Rules for highlighting -->
+    <!-- Note: Order is important. More specific rules should come first. -->
+    <!-- XML 엘리먼트 전체 (태그명과 속성 포함) -->
+    <rule style="PropertyName">&lt;[^&gt;]*&gt;</rule>
+    <!-- XML 엘리먼트 값 (태그 사이의 내용) - 더 정확한 매칭 -->
+    <rule style="String">&gt;([^&lt;&gt;]+)&lt;/</rule>
+    <rule style="PropertyName">"(\\.|[^"\\])*"\s*:</rule>
+    <rule style="String">"(\\.|[^"\\])*"</rule>
+    <rule style="Number">\b-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?\b</rule>
+    <rule style="Keyword">\b(true|false|null)\b</rule>
+    <rule style="Brackets">[\{\}\[\]]</rule>
+
+    <!-- Code folding -->
+    <folding start="{" finish="}" />
+    <folding start="\[" finish="\]" />
+    <folding start="&lt;[^/]" finish="&lt;/" />
+</doc> 
